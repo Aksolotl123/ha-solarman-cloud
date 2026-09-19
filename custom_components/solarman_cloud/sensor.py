@@ -25,6 +25,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api import token_expiry
 from .const import CONF_STATION_NAME, DOMAIN, MANUFACTURER
 from .coordinator import SolarmanCoordinator
 
@@ -143,12 +144,13 @@ async def async_setup_entry(
     coordinator: SolarmanCoordinator = hass.data[DOMAIN][entry.entry_id]
     data = coordinator.data or {}
 
-    entities = [
+    entities: list[SensorEntity] = [
         SolarmanSensor(coordinator, entry, desc)
         for desc in SENSORS
         # Only create a sensor if the field is present and not null for this station.
         if data.get(desc.key) is not None
     ]
+    entities.append(SolarmanTokenSensor(coordinator, entry))
     async_add_entities(entities)
 
 
@@ -185,3 +187,29 @@ class SolarmanSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
     def native_value(self) -> Any:
         """Return the current value read from coordinator data."""
         return self.entity_description.value_fn(self.coordinator.data or {})
+
+
+class SolarmanTokenSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
+    """When the stored refresh token expires.
+
+    The server rotates the token on every renewal; watching this value shows
+    whether a rotation also extends the validity window or keeps the original
+    deadline, which decides if a token ever has to be supplied by hand again.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "token_expires"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: SolarmanCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.unique_id}_token_expires"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(coordinator.station_id))}
+        )
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Expiry of the refresh token currently held by the client."""
+        return token_expiry(self.coordinator.api.refresh_token)

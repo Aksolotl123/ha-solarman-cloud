@@ -84,6 +84,9 @@
       },
       "last_update": {
         "name": "Ostatnia aktualizacja"
+      },
+      "token_expires": {
+        "name": "Token ważny do"
       }
     }
   }
