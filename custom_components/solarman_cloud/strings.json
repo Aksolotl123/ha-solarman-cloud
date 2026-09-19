@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Solarman Cloud account",
+        "description": "Sign in with the same e-mail and password you use in the Solarman Smart app.",
+        "data": {
+          "email": "E-mail",
+          "password": "Password",
+          "region": "Region code (e.g. PL)",
+          "base_url": "API base URL"
+        }
+      },
+      "station": {
+        "title": "Select station",
+        "data": {
+          "station_id": "Station"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid e-mail or password.",
+      "cannot_connect": "Could not connect to the Solarman cloud.",
+      "no_stations": "No stations found on this account."
+    },
+    "abort": {
+      "already_configured": "This station is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "production_power": { "name": "Current production" },
+      "consumption_power": { "name": "Current consumption" },
+      "grid_power": { "name": "Grid power" },
+      "buy_power": { "name": "Grid import power" },
+      "production_today": { "name": "Production today" },
+      "production_month": { "name": "Production this month" },
+      "production_total": { "name": "Production total" },
+      "battery_soc": { "name": "Battery" },
+      "temperature": { "name": "Temperature" },
+      "network_status": {
+        "name": "Network status",
+        "state": {
+          "ALL_ONLINE": "Online",
+          "PARTIAL_OFFLINE": "Partially offline",
+          "ALL_OFFLINE": "Offline"
+        }
+      },
+      "last_update": { "name": "Last update" }
+    }
+  }
+}

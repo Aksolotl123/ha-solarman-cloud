@@ -1,0 +1,62 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konto Solarman Cloud",
+        "description": "Zaloguj się tym samym e-mailem i hasłem, co w aplikacji Solarman Smart.",
+        "data": {
+          "email": "E-mail",
+          "password": "Hasło",
+          "region": "Kod regionu (np. PL)",
+          "base_url": "Adres bazowy API"
+        }
+      },
+      "station": {
+        "title": "Wybierz instalację",
+        "data": {
+          "station_id": "Instalacja"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Nieprawidłowy e-mail lub hasło.",
+      "cannot_connect": "Nie udało się połączyć z chmurą Solarman.",
+      "no_stations": "Nie znaleziono instalacji na tym koncie."
+    },
+    "abort": {
+      "already_configured": "Ta instalacja jest już skonfigurowana."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opcje",
+        "data": {
+          "scan_interval": "Częstotliwość odpytywania (sekundy)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "production_power": { "name": "Bieżąca produkcja" },
+      "consumption_power": { "name": "Bieżące zużycie" },
+      "grid_power": { "name": "Moc sieci" },
+      "buy_power": { "name": "Pobór z sieci" },
+      "production_today": { "name": "Produkcja dziś" },
+      "production_month": { "name": "Produkcja w tym miesiącu" },
+      "production_total": { "name": "Produkcja całkowita" },
+      "battery_soc": { "name": "Bateria" },
+      "temperature": { "name": "Temperatura" },
+      "network_status": {
+        "name": "Status sieci",
+        "state": {
+          "ALL_ONLINE": "Online",
+          "PARTIAL_OFFLINE": "Częściowo offline",
+          "ALL_OFFLINE": "Offline"
+        }
+      },
+      "last_update": { "name": "Ostatnia aktualizacja" }
+    }
+  }
+}
