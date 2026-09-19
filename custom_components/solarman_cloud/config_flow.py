@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -18,8 +19,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import SolarmanApiError, SolarmanAuthError, SolarmanCloudApi
 from .const import (
     CONF_BASE_URL,
-    CONF_EMAIL,
-    CONF_PASSWORD,
+    CONF_REFRESH_TOKEN,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
     CONF_STATION_ID,
@@ -34,52 +34,58 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+async def _async_validate(
+    hass, token: str, base_url: str, region: str
+) -> list[dict[str, Any]]:
+    """Check a refresh token and return the stations it can see."""
+    api = SolarmanCloudApi(
+        async_get_clientsession(hass), token.strip(), base_url, region
+    )
+    await api.async_refresh()
+    return await api.async_get_stations()
+
+
 class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the UI configuration flow."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        self._creds: dict[str, Any] = {}
+        self._config: dict[str, Any] = {}
         self._stations: list[dict[str, Any]] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 1: collect credentials and validate them by logging in."""
+        """Step 1: take the refresh token and verify it."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            session = async_get_clientsession(self.hass)
-            api = SolarmanCloudApi(
-                session,
-                user_input[CONF_EMAIL],
-                user_input[CONF_PASSWORD],
-                user_input[CONF_BASE_URL],
-                user_input[CONF_REGION],
-            )
             try:
-                await api.async_login()
-                self._stations = await api.async_get_stations()
+                self._stations = await _async_validate(
+                    self.hass,
+                    user_input[CONF_REFRESH_TOKEN],
+                    user_input[CONF_BASE_URL],
+                    user_input[CONF_REGION],
+                )
             except SolarmanAuthError as err:
-                _LOGGER.error("Solarman login rejected: %s", err)
-                errors["base"] = "invalid_auth"
+                _LOGGER.error("Solarman token rejected: %s", err)
+                errors["base"] = "invalid_token"
             except SolarmanApiError as err:
                 _LOGGER.error("Solarman API error during setup: %s", err)
                 errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001 - surface anything else in the log
-                _LOGGER.exception("Unexpected error during Solarman login")
+            except Exception:  # noqa: BLE001 - never fail silently
+                _LOGGER.exception("Unexpected error validating Solarman token")
                 errors["base"] = "unknown"
             else:
                 if not self._stations:
                     errors["base"] = "no_stations"
                 else:
-                    self._creds = user_input
+                    self._config = dict(user_input)
                     return await self.async_step_station()
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_EMAIL): str,
-                vol.Required(CONF_PASSWORD): str,
+                vol.Required(CONF_REFRESH_TOKEN): str,
                 vol.Required(CONF_REGION, default=DEFAULT_REGION): str,
                 vol.Required(CONF_BASE_URL, default=DEFAULT_BASE_URL): str,
             }
@@ -104,20 +110,61 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(
                 title=choices.get(station_id, f"Station {station_id}"),
                 data={
-                    **self._creds,
+                    **self._config,
+                    CONF_REFRESH_TOKEN: self._config[CONF_REFRESH_TOKEN].strip(),
                     CONF_STATION_ID: int(station_id),
                     CONF_STATION_NAME: choices.get(station_id),
                 },
                 options={CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL},
             )
 
-        # Single station: skip the picker.
         if len(choices) == 1:
-            only = next(iter(choices))
-            return await self.async_step_station({CONF_STATION_ID: only})
+            return await self.async_step_station(
+                {CONF_STATION_ID: next(iter(choices))}
+            )
 
         schema = vol.Schema({vol.Required(CONF_STATION_ID): vol.In(choices)})
         return self.async_show_form(step_id="station", data_schema=schema)
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Triggered when the stored refresh token stops working."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask the user for a freshly copied refresh token."""
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            token = user_input[CONF_REFRESH_TOKEN].strip()
+            try:
+                await _async_validate(
+                    self.hass,
+                    token,
+                    entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
+                    entry.data.get(CONF_REGION, DEFAULT_REGION),
+                )
+            except SolarmanAuthError:
+                errors["base"] = "invalid_token"
+            except SolarmanApiError:
+                errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Unexpected error validating Solarman token")
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_REFRESH_TOKEN): str}),
+            errors=errors,
+        )
 
     @staticmethod
     @callback

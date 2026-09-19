@@ -2,11 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Konto Solarman Cloud",
-        "description": "Zaloguj się tym samym e-mailem i hasłem, co w aplikacji Solarman Smart.",
+        "title": "Solarman Cloud",
+        "description": "Solarman blokuje logowanie hasłem przez skrypt (captcha z suwakiem), dlatego integracja używa tokenu odświeżania. Zaloguj się w przeglądarce na home.solarmanpv.com, skopiuj wartość ciasteczka o nazwie 442287045fabeaa868450dec4baee7f4 i wklej ją poniżej.",
         "data": {
-          "email": "E-mail",
-          "password": "Hasło",
+          "refresh_token": "Token odświeżania",
           "region": "Kod regionu (np. PL)",
           "base_url": "Adres bazowy API"
         }
@@ -16,16 +15,24 @@
         "data": {
           "station_id": "Instalacja"
         }
+      },
+      "reauth_confirm": {
+        "title": "Token wygasł",
+        "description": "Solarman blokuje logowanie hasłem przez skrypt (captcha z suwakiem), dlatego integracja używa tokenu odświeżania. Zaloguj się w przeglądarce na home.solarmanpv.com, skopiuj wartość ciasteczka o nazwie 442287045fabeaa868450dec4baee7f4 i wklej ją poniżej.",
+        "data": {
+          "refresh_token": "Token odświeżania"
+        }
       }
     },
     "error": {
-      "invalid_auth": "Nieprawidłowy e-mail lub hasło.",
       "cannot_connect": "Nie udało się połączyć z chmurą Solarman.",
       "no_stations": "Nie znaleziono instalacji na tym koncie.",
-      "unknown": "Nieoczekiwany błąd - sprawdź log Home Assistant."
+      "unknown": "Nieoczekiwany błąd - sprawdź log Home Assistant.",
+      "invalid_token": "Token odrzucony - zaloguj się ponownie i skopiuj nowy."
     },
     "abort": {
-      "already_configured": "Ta instalacja jest już skonfigurowana."
+      "already_configured": "Ta instalacja jest już skonfigurowana.",
+      "reauth_successful": "Token zaktualizowany."
     }
   },
   "options": {

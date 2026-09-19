@@ -5,7 +5,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .coordinator import SolarmanCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
@@ -32,5 +32,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the entry when options (e.g. scan interval) change."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    """Reload only when the polling interval actually changed.
+
+    Every token rotation rewrites entry.data, which also fires this listener.
+    Reloading on those would restart the integration constantly, so compare the
+    interval and ignore everything else.
+    """
+    coordinator: SolarmanCoordinator | None = hass.data.get(DOMAIN, {}).get(
+        entry.entry_id
+    )
+    new_interval = int(
+        entry.options.get(
+            CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
+    )
+    if coordinator is None or coordinator.scan_interval != new_interval:
+        await hass.config_entries.async_reload(entry.entry_id)

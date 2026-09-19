@@ -1,19 +1,25 @@
 """Client for the (unofficial) SolarmanPV web API.
 
-This talks to the same backend that the SolarmanPV web portal / mobile app use,
-authenticating with the account e-mail + password (``grant_type=mdc_password``),
-so no App ID / App Secret is required.
+Authentication note
+-------------------
+Solarman protects password login (``grant_type=mdc_password``) with a slider
+CAPTCHA; a scripted password login is rejected with HTTP 412 ``AUTH_SLIDE_ERROR``.
+This client therefore does **not** log in with a password. Instead the user signs
+in once themselves in a browser (solving the slider) and supplies the resulting
+*refresh token*. Renewal uses ``grant_type=refresh_token``, which needs no CAPTCHA.
 
-Note: this is a private, undocumented API. It may change without notice and is
-likely outside Solarman's official terms of use. For a supported path, request an
-App ID / App Secret from Solarman and use their official OpenAPI instead.
+The refresh token is rotated on every renewal, so the caller must persist the new
+value through ``token_saver`` or access will be lost once the old one expires.
+
+This is a private, undocumented API and may change without notice. The supported
+alternative is Solarman's official OpenAPI with an App ID / App Secret.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 import time
 from json import loads as json_loads
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
@@ -29,14 +35,19 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# identity_type: 1 = phone, 2 = email, 3 = username (from the web app).
-IDENTITY_EMAIL = 2
-
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+}
 
 
 class SolarmanAuthError(Exception):
-    """Raised when authentication fails (bad credentials)."""
+    """Raised when the refresh token is rejected and the user must re-supply one."""
 
 
 class SolarmanApiError(Exception):
@@ -44,82 +55,51 @@ class SolarmanApiError(Exception):
 
 
 class SolarmanCloudApi:
-    """Minimal async client for the SolarmanPV web API."""
+    """Minimal async client for the SolarmanPV web API, driven by a refresh token."""
 
     def __init__(
         self,
         session: aiohttp.ClientSession,
-        email: str,
-        password: str,
+        refresh_token: str,
         base_url: str,
         region: str,
+        token_saver: Callable[[str], None] | None = None,
     ) -> None:
-        """Initialise the client. ``password`` is the plain account password."""
+        """Initialise the client with a user-supplied refresh token."""
         self._session = session
-        self._email = email
-        self._password = password
+        self._refresh_token = refresh_token
         self._base_url = base_url.rstrip("/")
         self._region = region
+        self._token_saver = token_saver
 
         self._access_token: str | None = None
-        self._refresh_token: str | None = None
-        # Absolute epoch seconds when the access token expires (0 = unknown/expired).
         self._expires_at: float = 0.0
+
+    @property
+    def refresh_token(self) -> str:
+        """The current (possibly rotated) refresh token."""
+        return self._refresh_token
 
     # -- auth ---------------------------------------------------------------
 
-    @staticmethod
-    def _hash_password(password: str) -> str:
-        """SHA-256 hex digest, matching the web app's ``password`` field."""
-        return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    async def async_refresh(self) -> None:
+        """Exchange the refresh token for a new access token.
 
-    async def async_login(self) -> None:
-        """Obtain a fresh access + refresh token using the account password."""
-        data = {
-            "grant_type": "mdc_password",
-            "username": self._email,
-            "password": self._hash_password(self._password),
-            "clear_text_pwd": self._password,
-            "identity_type": IDENTITY_EMAIL,
-            "client_id": CLIENT_ID,
-            "system": SYSTEM,
-            "area": self._region,
-        }
-        await self._token_request(data)
-
-    async def _async_refresh(self) -> None:
-        """Renew the access token with the refresh token, falling back to login."""
-        if not self._refresh_token:
-            await self.async_login()
-            return
-        data = {
+        The server rotates the refresh token, so the new one is stored and handed
+        to ``token_saver`` for persistence.
+        """
+        url = self._base_url + PATH_TOKEN
+        form = {
             "grant_type": "refresh_token",
             "refresh_token": self._refresh_token,
             "client_id": CLIENT_ID,
             "system": SYSTEM,
             "area": self._region,
         }
-        try:
-            await self._token_request(data)
-        except SolarmanAuthError:
-            # Refresh token no longer valid -> full re-login.
-            self._refresh_token = None
-            await self.async_login()
-
-    async def _token_request(self, data: dict[str, Any]) -> None:
-        """POST to the token endpoint and store the resulting tokens."""
-        url = self._base_url + PATH_TOKEN
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            # Some edge nodes reject requests without a browser-like UA.
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
-            ),
-            "Accept": "application/json, text/plain, */*",
+            **BROWSER_HEADERS,
         }
-        # aiohttp only accepts str/bytes in form bodies; ints raise TypeError.
-        form = {k: str(v) for k, v in data.items() if v is not None}
         try:
             async with self._session.post(
                 url, data=form, headers=headers, timeout=REQUEST_TIMEOUT
@@ -127,7 +107,7 @@ class SolarmanCloudApi:
                 status = resp.status
                 raw = await resp.text()
         except aiohttp.ClientError as err:
-            raise SolarmanApiError(f"Token request failed: {err}") from err
+            raise SolarmanApiError(f"Token refresh failed: {err}") from err
 
         try:
             body = json_loads(raw)
@@ -136,56 +116,44 @@ class SolarmanCloudApi:
 
         token = body.get("access_token") if isinstance(body, dict) else None
         if not token:
-            # The body never contains the password, so it is safe to log.
+            # Responses carry no secrets, so they are safe to log.
             _LOGGER.error(
-                "Solarman token request to %s failed (HTTP %s), grant_type=%s, "
-                "response: %s",
-                url,
-                status,
-                data.get("grant_type"),
-                raw[:500],
+                "Solarman token refresh failed (HTTP %s): %s", status, raw[:400]
             )
-            error = body.get("error") if isinstance(body, dict) else raw
-            msg = body.get("msg") or body.get("error_description") if isinstance(body, dict) else None
-            combined = f"{error} {msg}".upper()
-            if (
-                status in (400, 401)
-                or "INVALID_GRANT" in combined
-                or "PASSWORD" in combined
-                or "USERNAME" in combined
-                or "ACCOUNT" in combined
-            ):
-                raise SolarmanAuthError(f"Authentication failed: {error} {msg or ''}")
-            raise SolarmanApiError(f"No access token in response (HTTP {status}): {raw[:200]}")
+            raise SolarmanAuthError(
+                f"Refresh token rejected (HTTP {status}). Sign in again in a browser "
+                f"and re-enter the token. Server said: {raw[:200]}"
+            )
 
         self._access_token = token
-        if body.get("refresh_token"):
-            self._refresh_token = body["refresh_token"]
-        # expires_in is in seconds; refresh 5 min early. Default 1 day if absent.
         expires_in = int(body.get("expires_in") or 86400)
         self._expires_at = time.time() + max(expires_in - 300, 60)
 
+        new_refresh = body.get("refresh_token")
+        if new_refresh and new_refresh != self._refresh_token:
+            self._refresh_token = new_refresh
+            if self._token_saver is not None:
+                # Persist immediately: the previous token may already be void.
+                self._token_saver(new_refresh)
+
     async def _async_ensure_token(self) -> None:
-        """Make sure we hold a valid, non-expired access token."""
-        if self._access_token is None:
-            await self.async_login()
-        elif time.time() >= self._expires_at:
-            await self._async_refresh()
+        """Make sure a valid access token is available."""
+        if self._access_token is None or time.time() >= self._expires_at:
+            await self.async_refresh()
 
     # -- requests -----------------------------------------------------------
 
     async def _request(
         self, method: str, path: str, *, json: Any = None, params: Any = None
     ) -> Any:
-        """Make an authenticated request, refreshing the token once on 401."""
+        """Make an authenticated request, refreshing once on a 401."""
         await self._async_ensure_token()
         result = await self._raw_request(method, path, json=json, params=params)
         if result is _UNAUTHORIZED:
-            # Token rejected mid-life; refresh and retry exactly once.
-            await self._async_refresh()
+            await self.async_refresh()
             result = await self._raw_request(method, path, json=json, params=params)
             if result is _UNAUTHORIZED:
-                raise SolarmanAuthError("Still unauthorized after token refresh")
+                raise SolarmanAuthError("Still unauthorized after refreshing the token")
         return result
 
     async def _raw_request(
@@ -195,6 +163,7 @@ class SolarmanCloudApi:
         headers = {
             "Authorization": f"Bearer {self._access_token}",
             "Content-Type": "application/json;charset=UTF-8",
+            **BROWSER_HEADERS,
         }
         try:
             async with self._session.request(
@@ -221,13 +190,11 @@ class SolarmanCloudApi:
         )
         if not isinstance(body, dict):
             raise SolarmanApiError(f"Unexpected station list response: {body}")
-        stations = body.get("data") or body.get("stationList") or []
-        return stations
+        return body.get("data") or body.get("stationList") or []
 
     async def async_get_station(self, station_id: int) -> dict[str, Any]:
         """Return the live summary for a single station by id."""
-        stations = await self.async_get_stations()
-        for station in stations:
+        for station in await self.async_get_stations():
             if station.get("id") == station_id:
                 return station
         raise SolarmanApiError(f"Station {station_id} not found")

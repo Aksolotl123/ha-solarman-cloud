@@ -2,11 +2,10 @@
   "config": {
     "step": {
       "user": {
-        "title": "Solarman Cloud account",
-        "description": "Sign in with the same e-mail and password you use in the Solarman Smart app.",
+        "title": "Solarman Cloud",
+        "description": "Solarman blocks scripted password logins with a slider CAPTCHA, so this integration uses a refresh token instead. Sign in at home.solarmanpv.com in your browser, then copy the value of the cookie named 442287045fabeaa868450dec4baee7f4 and paste it below.",
         "data": {
-          "email": "E-mail",
-          "password": "Password",
+          "refresh_token": "Refresh token",
           "region": "Region code (e.g. PL)",
           "base_url": "API base URL"
         }
@@ -16,16 +15,24 @@
         "data": {
           "station_id": "Station"
         }
+      },
+      "reauth_confirm": {
+        "title": "Token expired",
+        "description": "Solarman blocks scripted password logins with a slider CAPTCHA, so this integration uses a refresh token instead. Sign in at home.solarmanpv.com in your browser, then copy the value of the cookie named 442287045fabeaa868450dec4baee7f4 and paste it below.",
+        "data": {
+          "refresh_token": "Refresh token"
+        }
       }
     },
     "error": {
-      "invalid_auth": "Invalid e-mail or password.",
       "cannot_connect": "Could not connect to the Solarman cloud.",
       "no_stations": "No stations found on this account.",
-      "unknown": "Unexpected error - see the Home Assistant log."
+      "unknown": "Unexpected error - see the Home Assistant log.",
+      "invalid_token": "Token rejected - sign in again and copy a fresh one."
     },
     "abort": {
-      "already_configured": "This station is already configured."
+      "already_configured": "This station is already configured.",
+      "reauth_successful": "Token updated."
     }
   },
   "options": {

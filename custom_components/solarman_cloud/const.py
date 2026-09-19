@@ -6,8 +6,7 @@ from datetime import timedelta
 DOMAIN = "solarman_cloud"
 
 # Config / options keys
-CONF_EMAIL = "email"
-CONF_PASSWORD = "password"
+CONF_REFRESH_TOKEN = "refresh_token"
 CONF_REGION = "region"
 CONF_BASE_URL = "base_url"
 CONF_STATION_ID = "station_id"

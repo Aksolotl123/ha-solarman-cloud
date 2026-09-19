@@ -1,21 +1,49 @@
 # Solarman Cloud (account login) — Home Assistant
 
 Integracja Home Assistant, która pobiera dane instalacji fotowoltaicznej z **chmury
-Solarman**, logując się **tym samym kontem (e-mail + hasło) co aplikacja Solarman
-Smart**. Nie wymaga, aby Home Assistant i falownik były w tej samej sieci — dane idą
+Solarman**, logując się **tym samym kontem co aplikacja Solarman Smart**. Nie wymaga, aby Home Assistant i falownik były w tej samej sieci — dane idą
 przez chmurę, tak jak w aplikacji na telefon.
 
 > **Uwaga:** integracja korzysta z prywatnego, nieudokumentowanego API portalu
-> SolarmanPV (`grant_type=mdc_password`). Może przestać działać po zmianach po
+> SolarmanPV (`grant_type=refresh_token`). Może przestać działać po zmianach po
 > stronie Solarman i prawdopodobnie wykracza poza oficjalny regulamin. Oficjalną,
 > wspieraną drogą jest OpenAPI z App ID / App Secret (do uzyskania mailowo od
 > Solarman) — zob. sekcję *Alternatywa* poniżej.
 
+## Jak działa uwierzytelnianie (ważne)
+
+Solarman chroni logowanie hasłem **captchą z suwakiem** — zapytanie wysłane przez
+skrypt dostaje `HTTP 412 AUTH_SLIDE_ERROR`. Dlatego integracja **nie loguje się
+hasłem**. Zamiast tego logujesz się raz sam w przeglądarce (rozwiązując suwak),
+a integracja dostaje od Ciebie **token odświeżania** i dalej odnawia dostęp sama
+grantem `refresh_token`, który captchy nie wymaga.
+
+Token jest **rotowany przy każdym odświeżeniu** — integracja zapisuje nowy
+automatycznie. Gdy token przestanie działać, Home Assistant poprosi o wklejenie
+nowego (ponowna autoryzacja).
+
+### Skąd wziąć token
+
+1. Zaloguj się na `https://home.solarmanpv.com` w przeglądarce.
+2. Otwórz narzędzia deweloperskie (F12) → zakładka **Application** / **Aplikacja**
+   → **Cookies** → `https://home.solarmanpv.com`.
+3. Skopiuj **wartość** ciasteczka o nazwie `442287045fabeaa868450dec4baee7f4`
+   (to jest refresh token).
+
+Alternatywnie w konsoli przeglądarki (zakładka **Console**):
+
+```js
+copy(decodeURIComponent(document.cookie.split('; ').find(c=>c.startsWith('442287045fabeaa868450dec4baee7f4=')).split('=').slice(1).join('=')))
+```
+
+To skopiuje token do schowka bez wyświetlania go na ekranie.
+
 ## Funkcje
 
-- Logowanie kontem Solarman (e-mail + hasło), bez App ID / App Secret.
 - Odczyt danych na poziomie instalacji, domyślnie co **1 godzinę** (konfigurowalne,
   min. 5 min — chmura i tak odświeża co ~5 min).
+- Automatyczne odnawianie i zapisywanie rotowanego tokenu.
+- Ponowna autoryzacja przez UI, gdy token wygaśnie.
 - Sensory (tworzone tylko, jeśli dane są dostępne dla Twojej instalacji):
   - Bieżąca produkcja `[W]`, bieżące zużycie `[W]`
   - Moc sieci / pobór z sieci `[W]`
@@ -29,10 +57,7 @@ przez chmurę, tak jak w aplikacji na telefon.
 2. Wklej adres tego repozytorium, kategoria **Integration**, **Add**.
 3. Znajdź *Solarman Cloud (account login)*, **Download**, zrestartuj Home Assistant.
 4. **Ustawienia → Urządzenia i usługi → Dodaj integrację** → *Solarman Cloud*.
-5. Podaj e-mail, hasło, kod regionu (np. `PL`) i adres bazowy API
-   (domyślnie `https://home.solarmanpv.com`). Wybierz instalację.
-
-Interwał odpytywania zmienisz później w **Konfiguruj** przy integracji.
+5. Wklej token odświeżania, podaj kod regionu (np. `PL`) i adres bazowy API.
 
 ### Instalacja ręczna
 
