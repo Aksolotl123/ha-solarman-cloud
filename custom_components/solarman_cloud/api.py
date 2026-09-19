@@ -16,8 +16,11 @@ alternative is Solarman's official OpenAPI with an App ID / App Secret.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import time
+from datetime import datetime, timezone
 from json import loads as json_loads
 from collections.abc import Callable
 from typing import Any
@@ -44,6 +47,23 @@ BROWSER_HEADERS = {
     ),
     "Accept": "application/json, text/plain, */*",
 }
+
+
+def token_expiry(token: str) -> datetime | None:
+    """Return a JWT's expiry, or None if it cannot be read.
+
+    Only the ``exp`` claim is used; no other claim is read or logged.
+    """
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json_loads(base64.urlsafe_b64decode(payload))
+        exp = claims.get("exp")
+    except (IndexError, ValueError, binascii.Error, TypeError):
+        return None
+    if not exp:
+        return None
+    return datetime.fromtimestamp(int(exp), tz=timezone.utc)
 
 
 class SolarmanAuthError(Exception):
@@ -131,6 +151,19 @@ class SolarmanCloudApi:
 
         new_refresh = body.get("refresh_token")
         if new_refresh and new_refresh != self._refresh_token:
+            # Log both expiries to show whether rotation extends the window.
+            old_exp = token_expiry(self._refresh_token)
+            new_exp = token_expiry(new_refresh)
+            _LOGGER.info(
+                "Solarman refresh token rotated. Previous expiry: %s, new expiry: %s "
+                "(%s). Access token valid until %s.",
+                old_exp.isoformat() if old_exp else "unknown",
+                new_exp.isoformat() if new_exp else "unknown",
+                "window extended"
+                if old_exp and new_exp and new_exp > old_exp
+                else "window NOT extended - a manual token will be needed before it ends",
+                datetime.fromtimestamp(self._expires_at, tz=timezone.utc).isoformat(),
+            )
             self._refresh_token = new_refresh
             if self._token_saver is not None:
                 # Persist immediately: the previous token may already be void.

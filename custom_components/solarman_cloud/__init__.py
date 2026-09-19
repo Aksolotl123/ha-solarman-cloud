@@ -1,11 +1,18 @@
 """The Solarman Cloud integration."""
 from __future__ import annotations
 
+from homeassistant.components import webhook as webhook_component
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
+from . import webhook as token_webhook
+from .const import (
+    CONF_SCAN_INTERVAL,
+    CONF_WEBHOOK_ID,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
 from .coordinator import SolarmanCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
@@ -13,11 +20,22 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Solarman Cloud from a config entry."""
+    if not entry.data.get(CONF_WEBHOOK_ID):
+        # Entries created before the webhook existed get one on first load.
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_WEBHOOK_ID: webhook_component.async_generate_id(),
+            },
+        )
+
     coordinator = SolarmanCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     await coordinator.async_setup()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    await token_webhook.async_register(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
@@ -25,6 +43,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    token_webhook.async_unregister(hass, entry)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)

@@ -38,6 +38,22 @@ copy(decodeURIComponent(document.cookie.split('; ').find(c=>c.startsWith('442287
 
 To skopiuje token do schowka bez wyświetlania go na ekranie.
 
+### Automatyczne przekazywanie tokenu (opcjonalne)
+
+Żeby nie kopiować tokenu ręcznie, integracja wystawia **webhook**, a w przeglądarce
+działa **userscript** (Tampermonkey). Po Twoim zalogowaniu na portalu skrypt sam
+wykrywa token i wysyła go do Home Assistant — integracja weryfikuje go, zapisuje
+i przeładowuje się. Ty logujesz się i rozwiązujesz suwak sam; automatyzowane jest
+wyłącznie przeniesienie tokenu.
+
+1. Po starcie integracji znajdź w logu HA linię `Solarman token webhook ready` —
+   zawiera Twój prywatny adres webhooka.
+2. Zainstaluj rozszerzenie Tampermonkey i dodaj skrypt
+   [`userscript/solarman-token-to-ha.user.js`](userscript/solarman-token-to-ha.user.js).
+3. Wklej adres webhooka w miejsce `PASTE_YOUR_WEBHOOK_URL_HERE`.
+
+**Adres webhooka traktuj jak hasło** — kto go zna, może wysłać token do Twojego HA.
+
 ## Funkcje
 
 - Odczyt danych na poziomie instalacji, domyślnie co **1 godzinę** (konfigurowalne,

@@ -8,6 +8,7 @@ DOMAIN = "solarman_cloud"
 # Config / options keys
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_REGION = "region"
+CONF_WEBHOOK_ID = "webhook_id"
 CONF_BASE_URL = "base_url"
 CONF_STATION_ID = "station_id"
 CONF_STATION_NAME = "station_name"
