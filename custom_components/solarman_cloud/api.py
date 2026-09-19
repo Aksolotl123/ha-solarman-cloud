@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from json import loads as json_loads
 from typing import Any
 
 import aiohttp
@@ -108,22 +109,54 @@ class SolarmanCloudApi:
     async def _token_request(self, data: dict[str, Any]) -> None:
         """POST to the token endpoint and store the resulting tokens."""
         url = self._base_url + PATH_TOKEN
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            # Some edge nodes reject requests without a browser-like UA.
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+            ),
+            "Accept": "application/json, text/plain, */*",
+        }
+        # aiohttp only accepts str/bytes in form bodies; ints raise TypeError.
+        form = {k: str(v) for k, v in data.items() if v is not None}
         try:
             async with self._session.post(
-                url, data=data, headers=headers, timeout=REQUEST_TIMEOUT
+                url, data=form, headers=headers, timeout=REQUEST_TIMEOUT
             ) as resp:
-                body = await resp.json(content_type=None)
+                status = resp.status
+                raw = await resp.text()
         except aiohttp.ClientError as err:
             raise SolarmanApiError(f"Token request failed: {err}") from err
 
+        try:
+            body = json_loads(raw)
+        except ValueError:
+            body = None
+
         token = body.get("access_token") if isinstance(body, dict) else None
         if not token:
-            error = body.get("error") if isinstance(body, dict) else body
-            # 'invalid_grant' / bad username or password -> credentials problem.
-            if error in ("invalid_grant", "unauthorized") or "PASSWORD" in str(error):
-                raise SolarmanAuthError(f"Authentication failed: {error}")
-            raise SolarmanApiError(f"No access token in response: {body}")
+            # The body never contains the password, so it is safe to log.
+            _LOGGER.error(
+                "Solarman token request to %s failed (HTTP %s), grant_type=%s, "
+                "response: %s",
+                url,
+                status,
+                data.get("grant_type"),
+                raw[:500],
+            )
+            error = body.get("error") if isinstance(body, dict) else raw
+            msg = body.get("msg") or body.get("error_description") if isinstance(body, dict) else None
+            combined = f"{error} {msg}".upper()
+            if (
+                status in (400, 401)
+                or "INVALID_GRANT" in combined
+                or "PASSWORD" in combined
+                or "USERNAME" in combined
+                or "ACCOUNT" in combined
+            ):
+                raise SolarmanAuthError(f"Authentication failed: {error} {msg or ''}")
+            raise SolarmanApiError(f"No access token in response (HTTP {status}): {raw[:200]}")
 
         self._access_token = token
         if body.get("refresh_token"):

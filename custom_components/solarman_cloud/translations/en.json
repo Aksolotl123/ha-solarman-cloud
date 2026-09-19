@@ -21,7 +21,8 @@
     "error": {
       "invalid_auth": "Invalid e-mail or password.",
       "cannot_connect": "Could not connect to the Solarman cloud.",
-      "no_stations": "No stations found on this account."
+      "no_stations": "No stations found on this account.",
+      "unknown": "Unexpected error - see the Home Assistant log."
     },
     "abort": {
       "already_configured": "This station is already configured."
@@ -39,15 +40,33 @@
   },
   "entity": {
     "sensor": {
-      "production_power": { "name": "Current production" },
-      "consumption_power": { "name": "Current consumption" },
-      "grid_power": { "name": "Grid power" },
-      "buy_power": { "name": "Grid import power" },
-      "production_today": { "name": "Production today" },
-      "production_month": { "name": "Production this month" },
-      "production_total": { "name": "Production total" },
-      "battery_soc": { "name": "Battery" },
-      "temperature": { "name": "Temperature" },
+      "production_power": {
+        "name": "Current production"
+      },
+      "consumption_power": {
+        "name": "Current consumption"
+      },
+      "grid_power": {
+        "name": "Grid power"
+      },
+      "buy_power": {
+        "name": "Grid import power"
+      },
+      "production_today": {
+        "name": "Production today"
+      },
+      "production_month": {
+        "name": "Production this month"
+      },
+      "production_total": {
+        "name": "Production total"
+      },
+      "battery_soc": {
+        "name": "Battery"
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
       "network_status": {
         "name": "Network status",
         "state": {
@@ -56,7 +75,9 @@
           "ALL_OFFLINE": "Offline"
         }
       },
-      "last_update": { "name": "Last update" }
+      "last_update": {
+        "name": "Last update"
+      }
     }
   }
 }

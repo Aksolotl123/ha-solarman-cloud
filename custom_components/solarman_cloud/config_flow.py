@@ -60,10 +60,15 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 await api.async_login()
                 self._stations = await api.async_get_stations()
-            except SolarmanAuthError:
+            except SolarmanAuthError as err:
+                _LOGGER.error("Solarman login rejected: %s", err)
                 errors["base"] = "invalid_auth"
-            except SolarmanApiError:
+            except SolarmanApiError as err:
+                _LOGGER.error("Solarman API error during setup: %s", err)
                 errors["base"] = "cannot_connect"
+            except Exception:  # noqa: BLE001 - surface anything else in the log
+                _LOGGER.exception("Unexpected error during Solarman login")
+                errors["base"] = "unknown"
             else:
                 if not self._stations:
                     errors["base"] = "no_stations"
