@@ -100,6 +100,12 @@ class SolarmanCloudApi:
         """The current (possibly rotated) refresh token."""
         return self._refresh_token
 
+    def set_refresh_token(self, token: str) -> None:
+        """Adopt a token obtained elsewhere, discarding the cached access token."""
+        self._refresh_token = token
+        self._access_token = None
+        self._expires_at = 0.0
+
     # -- auth ---------------------------------------------------------------
 
     async def async_refresh(self) -> None:

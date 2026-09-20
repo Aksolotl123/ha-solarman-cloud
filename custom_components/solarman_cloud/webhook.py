@@ -7,6 +7,7 @@ a human completes the login, and only the resulting token is forwarded.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from json import JSONDecodeError, loads
 
@@ -34,6 +35,11 @@ _LOGGER = logging.getLogger(__name__)
 # Tokens are JWTs; anything much shorter is not worth sending to the server.
 MIN_TOKEN_LENGTH = 100
 MAX_TOKEN_LENGTH = 8000
+
+# The browser script can fire several times at once (page load plus its periodic
+# check). Each accepted post spends a token, so identical posts are handled once.
+_LOCKS: dict[str, asyncio.Lock] = {}
+_LAST_ACCEPTED: dict[str, str] = {}
 
 
 async def async_register(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -90,34 +96,44 @@ async def _async_handle_token(
         _LOGGER.warning("Solarman webhook got a token of implausible length")
         return Response(status=400, text="implausible token")
 
-    if token == entry.data.get(CONF_REFRESH_TOKEN):
-        # Already current; nothing to do (the script may fire on every page load).
-        return Response(status=200, text="unchanged")
+    lock = _LOCKS.setdefault(entry.entry_id, asyncio.Lock())
+    async with lock:
+        if token in (entry.data.get(CONF_REFRESH_TOKEN), _LAST_ACCEPTED.get(entry.entry_id)):
+            # Already current, or a duplicate of the post just handled. Comparing
+            # against the posted value matters because accepting one rotates it,
+            # so the stored token no longer matches what the browser keeps sending.
+            return Response(status=200, text="unchanged")
 
-    api = SolarmanCloudApi(
-        async_get_clientsession(hass),
-        token,
-        entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
-        entry.data.get(CONF_REGION, DEFAULT_REGION),
-    )
-    try:
-        await api.async_refresh()
-    except (SolarmanAuthError, SolarmanApiError) as err:
-        _LOGGER.warning("Solarman webhook rejected a token: %s", err)
-        return Response(status=400, text="token rejected")
+        api = SolarmanCloudApi(
+            async_get_clientsession(hass),
+            token,
+            entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
+            entry.data.get(CONF_REGION, DEFAULT_REGION),
+        )
+        try:
+            await api.async_refresh()
+        except (SolarmanAuthError, SolarmanApiError) as err:
+            _LOGGER.warning("Solarman webhook rejected a token: %s", err)
+            return Response(status=400, text="token rejected")
 
-    # async_refresh may already have rotated it; store the newest one.
-    newest = api.refresh_token
-    exp = token_expiry(newest)
-    hass.config_entries.async_update_entry(
-        entry, data={**entry.data, CONF_REFRESH_TOKEN: newest}
-    )
-    _LOGGER.info(
-        "Solarman refresh token accepted from browser; valid until %s",
-        exp.isoformat() if exp else "unknown",
-    )
-    hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
-    return Response(status=200, text="ok")
+        # async_refresh may already have rotated it; store the newest one.
+        newest = api.refresh_token
+        _LAST_ACCEPTED[entry.entry_id] = token
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_REFRESH_TOKEN: newest}
+        )
+
+        # Hand the token to the running client instead of reloading the entry.
+        coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        if coordinator is not None:
+            coordinator.api.set_refresh_token(newest)
+
+        exp = token_expiry(newest)
+        _LOGGER.info(
+            "Solarman refresh token accepted from browser; valid until %s",
+            exp.isoformat() if exp else "unknown",
+        )
+        return Response(status=200, text="ok")
 
 
 def async_unregister(hass: HomeAssistant, entry: ConfigEntry) -> None:

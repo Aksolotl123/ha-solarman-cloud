@@ -10,6 +10,7 @@
 // @grant        GM_setValue
 // @connect      *
 // @run-at       document-idle
+// @noframes
 // ==/UserScript==
 
 /*
@@ -44,13 +45,18 @@ const COOKIE_NAME = '442287045fabeaa868450dec4baee7f4';
     return decodeURIComponent(row.split('=').slice(1).join('='));
   }
 
+  // Guards against the periodic check firing again while a POST is still open.
+  let inFlight = false;
+
   function send(token) {
+    inFlight = true;
     GM_xmlhttpRequest({
       method: 'POST',
       url: WEBHOOK_URL,
       data: token,
       headers: { 'Content-Type': 'text/plain' },
       onload: (res) => {
+        inFlight = false;
         if (res.status === 200) {
           GM_setValue('lastSent', token);
           console.info('[Solarman->HA] Token delivered:', res.responseText);
@@ -58,11 +64,15 @@ const COOKIE_NAME = '442287045fabeaa868450dec4baee7f4';
           console.warn('[Solarman->HA] HA replied', res.status, res.responseText);
         }
       },
-      onerror: () => console.warn('[Solarman->HA] Could not reach Home Assistant.'),
+      onerror: () => {
+        inFlight = false;
+        console.warn('[Solarman->HA] Could not reach Home Assistant.');
+      },
     });
   }
 
   function check() {
+    if (inFlight) return; // a POST is still open
     const token = readCookie(COOKIE_NAME);
     if (!token) return; // not signed in yet
     if (token === GM_getValue('lastSent', '')) return; // already delivered
