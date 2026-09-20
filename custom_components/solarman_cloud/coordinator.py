@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -43,6 +43,9 @@ class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Production per calendar month, {(year, month): kWh}, straight from the
         # cloud - it reaches back to before Home Assistant knew this station.
         self.monthly: dict[tuple[int, int], float] = {}
+        # Production per day, {(year, month, day): kWh}, only for the months that
+        # yesterday and today fall in - that is all any report has needed so far.
+        self.daily: dict[tuple[int, int, int], float] = {}
         self._history_years: set[int] = set()
 
         session = async_get_clientsession(hass)
@@ -91,6 +94,10 @@ class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Production of one calendar month, or None if the cloud has no record."""
         return self.monthly.get((year, month))
 
+    def production_for_day(self, day: date) -> float | None:
+        """Production of one calendar day, or None if the cloud has no record."""
+        return self.daily.get((day.year, day.month, day.day))
+
     def monthly_history(self, limit: int = MONTHLY_HISTORY_LIMIT) -> dict[str, float]:
         """Return the most recent months as ``{"YYYY-MM": kWh}``, oldest first.
 
@@ -136,6 +143,28 @@ class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.entry.data.get(CONF_STATION_NAME) or self.entry.title,
             self.monthly,
         )
+
+        # Yesterday's total is not in the live summary, so the per-day breakdown
+        # is read as well. Only the month holding today, plus the one holding
+        # yesterday on the first of a month, is worth asking for.
+        today = now.date()
+        wanted = {(today.year, today.month)}
+        yesterday = today - timedelta(days=1)
+        wanted.add((yesterday.year, yesterday.month))
+        try:
+            days: dict[tuple[int, int, int], float] = {}
+            for year, month in sorted(wanted):
+                for day, value in (
+                    await self.api.async_get_daily_production(
+                        self.station_id, year, month
+                    )
+                ).items():
+                    days[(year, month, day)] = value
+        except (SolarmanApiError, SolarmanAuthError) as err:
+            _LOGGER.warning("Could not load daily production: %s", err)
+            return
+        # Replace rather than merge, so days the cloud has corrected do not linger.
+        self.daily = days
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch the latest live station summary and refresh the history."""

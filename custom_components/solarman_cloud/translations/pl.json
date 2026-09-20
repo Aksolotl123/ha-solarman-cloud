@@ -62,6 +62,9 @@
       "production_today": {
         "name": "Produkcja dziś"
       },
+      "production_yesterday": {
+        "name": "Produkcja wczoraj"
+      },
       "production_month": {
         "name": "Produkcja w tym miesiącu"
       },

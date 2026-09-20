@@ -288,6 +288,14 @@ class SolarmanCloudApi:
             station_id, "year", "month", {"year": str(year)}
         )
 
+    async def async_get_daily_production(
+        self, station_id: int, year: int, month: int
+    ) -> dict[int, float]:
+        """Return ``{day: kWh}`` for one month; days without data are absent."""
+        return await self._async_history_totals(
+            station_id, "month", "day", {"year": str(year), "month": str(month)}
+        )
+
     async def async_get_devices(self, station_id: int) -> list[dict[str, Any]]:
         """Return the devices (inverter, logger, ...) for a station."""
         body = await self._request(

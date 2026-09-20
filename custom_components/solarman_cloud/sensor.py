@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -155,6 +155,7 @@ async def async_setup_entry(
         # Only create a sensor if the field is present and not null for this station.
         if data.get(desc.key) is not None
     ]
+    entities.append(SolarmanYesterdaySensor(coordinator, entry))
     entities.append(SolarmanLastMonthSensor(coordinator, entry))
     entities.append(SolarmanTokenSensor(coordinator, entry))
     entities.append(SolarmanWebhookSensor(coordinator, entry))
@@ -194,6 +195,46 @@ class SolarmanSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
     def native_value(self) -> Any:
         """Return the current value read from coordinator data."""
         return self.entity_description.value_fn(self.coordinator.data or {})
+
+
+class SolarmanYesterdaySensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
+    """Production over the previous calendar day.
+
+    The live station summary resets at midnight and keeps no record of the day
+    just gone, so the value comes from the per-day history the coordinator
+    reads from the cloud. It is what someone who used to copy the figure off
+    the inverter every morning actually wants to see.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "production_yesterday"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    # No state class, for the same reason as the last-month sensor: the value
+    # jumps to a different day's total at midnight, which the recorder would
+    # read as a meter reset.
+    _attr_icon = "mdi:calendar-arrow-left"
+
+    def __init__(self, coordinator: SolarmanCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.unique_id}_production_yesterday"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(coordinator.station_id))}
+        )
+
+    def _yesterday(self) -> date:
+        """Return yesterday's date in the station's local time."""
+        return dt_util.now().date() - timedelta(days=1)
+
+    @property
+    def native_value(self) -> float | None:
+        """Yesterday's production, or None until the history has been read."""
+        return self.coordinator.production_for_day(self._yesterday())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Name the day the value belongs to, which is otherwise implicit."""
+        return {"date": self._yesterday().isoformat()}
 
 
 class SolarmanLastMonthSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
