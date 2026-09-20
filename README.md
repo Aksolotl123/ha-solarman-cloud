@@ -63,8 +63,10 @@ wyłącznie przeniesienie tokenu.
 - Sensory (tworzone tylko, jeśli dane są dostępne dla Twojej instalacji):
   - Bieżąca produkcja `[W]`, bieżące zużycie `[W]`
   - Moc sieci / pobór z sieci `[W]`
-  - Produkcja dziś / w tym miesiącu / w zeszłym miesiącu / całkowita `[kWh]`
+  - Produkcja dziś / wczoraj / w tym miesiącu / w zeszłym miesiącu / całkowita `[kWh]`
     (dziś / w miesiącu / całkowita są gotowe do panelu **Energia**)
+  - *Produkcja wczoraj* pochodzi z historii dziennej w chmurze — dane z falownika
+    znikają z bieżącego podsumowania o północy
   - Stan baterii `[%]` (jeśli masz magazyn)
   - Temperatura, status sieci, czas ostatniej aktualizacji (diagnostyka)
 - Import **historii miesięcznej** z chmury do statystyk Home Assistanta —
