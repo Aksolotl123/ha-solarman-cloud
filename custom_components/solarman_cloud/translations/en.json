@@ -78,12 +78,7 @@
         "name": "Temperature"
       },
       "network_status": {
-        "name": "Network status",
-        "state": {
-          "ALL_ONLINE": "Online",
-          "PARTIAL_OFFLINE": "Partially offline",
-          "ALL_OFFLINE": "Offline"
-        }
+        "name": "Network status"
       },
       "last_update": {
         "name": "Last update"

@@ -123,9 +123,11 @@ SENSORS: tuple[SolarmanSensorDescription, ...] = (
     SolarmanSensorDescription(
         key="networkStatus",
         translation_key="network_status",
-        device_class=SensorDeviceClass.ENUM,
+        # Deliberately not an enum sensor: the cloud sends values outside any
+        # list one can write down (ALL_ONLINE, PARTIAL_OFFLINE, ALL_OFFLINE and
+        # NORMAL have all been seen), and an unlisted value makes an enum sensor
+        # fail to be added at all. The raw status is reported instead.
         entity_category=EntityCategory.DIAGNOSTIC,
-        options=["ALL_ONLINE", "PARTIAL_OFFLINE", "ALL_OFFLINE"],
         value_fn=lambda d: d.get("networkStatus"),
     ),
     SolarmanSensorDescription(
