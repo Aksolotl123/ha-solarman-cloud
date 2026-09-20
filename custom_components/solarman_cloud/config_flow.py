@@ -36,13 +36,19 @@ _LOGGER = logging.getLogger(__name__)
 
 async def _async_validate(
     hass, token: str, base_url: str, region: str
-) -> list[dict[str, Any]]:
-    """Check a refresh token and return the stations it can see."""
+) -> tuple[str, list[dict[str, Any]]]:
+    """Check a refresh token and return the token to store plus its stations.
+
+    Validating spends the token: the server rotates it and hands back a new one.
+    The rotated value is returned so the caller stores that rather than the one
+    the user pasted, which the server may already consider spent.
+    """
     api = SolarmanCloudApi(
         async_get_clientsession(hass), token.strip(), base_url, region
     )
     await api.async_refresh()
-    return await api.async_get_stations()
+    stations = await api.async_get_stations()
+    return api.refresh_token, stations
 
 
 class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -61,7 +67,7 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                self._stations = await _async_validate(
+                token, self._stations = await _async_validate(
                     self.hass,
                     user_input[CONF_REFRESH_TOKEN],
                     user_input[CONF_BASE_URL],
@@ -80,7 +86,8 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
                 if not self._stations:
                     errors["base"] = "no_stations"
                 else:
-                    self._config = dict(user_input)
+                    # Keep the rotated token, not the one the user pasted.
+                    self._config = {**user_input, CONF_REFRESH_TOKEN: token}
                     return await self.async_step_station()
 
         schema = vol.Schema(
@@ -111,7 +118,6 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
                 title=choices.get(station_id, f"Station {station_id}"),
                 data={
                     **self._config,
-                    CONF_REFRESH_TOKEN: self._config[CONF_REFRESH_TOKEN].strip(),
                     CONF_STATION_ID: int(station_id),
                     CONF_STATION_NAME: choices.get(station_id),
                 },
@@ -140,11 +146,10 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            token = user_input[CONF_REFRESH_TOKEN].strip()
             try:
-                await _async_validate(
+                token, _stations = await _async_validate(
                     self.hass,
-                    token,
+                    user_input[CONF_REFRESH_TOKEN],
                     entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
                     entry.data.get(CONF_REGION, DEFAULT_REGION),
                 )
