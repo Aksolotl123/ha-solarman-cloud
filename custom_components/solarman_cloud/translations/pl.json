@@ -87,6 +87,9 @@
       },
       "token_expires": {
         "name": "Token ważny do"
+      },
+      "token_webhook": {
+        "name": "Adres webhooka tokenu"
       }
     }
   }

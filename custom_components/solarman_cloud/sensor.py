@@ -20,13 +20,15 @@ from homeassistant.const import (
     UnitOfPower,
     UnitOfTemperature,
 )
+from homeassistant.components import webhook as webhook_component
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import token_expiry
-from .const import CONF_STATION_NAME, DOMAIN, MANUFACTURER
+from .const import CONF_STATION_NAME, CONF_WEBHOOK_ID, DOMAIN, MANUFACTURER
 from .coordinator import SolarmanCoordinator
 
 
@@ -151,6 +153,7 @@ async def async_setup_entry(
         if data.get(desc.key) is not None
     ]
     entities.append(SolarmanTokenSensor(coordinator, entry))
+    entities.append(SolarmanWebhookSensor(coordinator, entry))
     async_add_entities(entities)
 
 
@@ -213,3 +216,50 @@ class SolarmanTokenSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
     def native_value(self) -> datetime | None:
         """Expiry of the refresh token currently held by the client."""
         return token_expiry(self.coordinator.api.refresh_token)
+
+
+class SolarmanWebhookSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
+    """The address the browser script posts a refreshed token to.
+
+    Shown as an entity so it can be copied from the UI without hunting through
+    the log, which is where it would otherwise only appear once at startup.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "token_webhook"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:webhook"
+
+    def __init__(self, coordinator: SolarmanCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.unique_id}_token_webhook"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(coordinator.station_id))}
+        )
+
+    def _url(self) -> str | None:
+        """Build the externally reachable webhook URL, if there is one."""
+        webhook_id = self._entry.data.get(CONF_WEBHOOK_ID)
+        if not webhook_id:
+            return None
+        try:
+            # The browser may be off-network, so prefer an external address.
+            base = get_url(self.hass, allow_cloud=True, prefer_external=True)
+        except NoURLAvailableError:
+            base = ""
+        return f"{base}{webhook_component.async_generate_path(webhook_id)}"
+
+    @property
+    def native_value(self) -> str | None:
+        """The URL, or a pointer to the attribute if it is too long for a state."""
+        url = self._url()
+        if not url:
+            return None
+        # Home Assistant caps state strings at 255 characters.
+        return url if len(url) <= 255 else "see 'url' attribute"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the full URL, which is never truncated here."""
+        return {"url": self._url()}
