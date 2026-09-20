@@ -105,6 +105,20 @@ ID instalacji znajdziesz w adresie encji lub w logu integracji. Ta statystyka
 jest celowo **osobna** od sensora produkcji — nie dodawaj jej do panelu
 **Energia**, bo produkcja liczyłaby się podwójnie.
 
+### Ta sama historia w szablonach
+
+Szablony Jinja (powiadomienia, karta markdown) **nie mają dostępu do statystyk**,
+dlatego te same liczby są wystawione jako atrybut `months` sensora *Produkcja
+w zeszłym miesiącu* — słownik `{"RRRR-MM": kWh}`, ostatnie 24 miesiące, od
+najstarszego. Przykład: ostatnie 12 miesięcy w powiadomieniu:
+
+```jinja
+{% set m = state_attr('sensor.<twoj>_produkcja_w_zeszlym_miesiacu', 'months') or {} %}
+{% for ym, kwh in (m.items() | list)[-12:] %}
+{{ ym[5:7] }}.{{ ym[:4] }}  {{ '%.2f' | format(kwh) }} kWh
+{% endfor %}
+```
+
 ## Instalacja przez HACS
 
 1. HACS → menu (trzy kropki) → **Custom repositories**.

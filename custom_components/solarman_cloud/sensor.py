@@ -231,9 +231,17 @@ class SolarmanLastMonthSensor(CoordinatorEntity[SolarmanCoordinator], SensorEnti
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Name the month the value belongs to, which is otherwise implicit."""
+        """Name the month the value belongs to, plus the history behind it.
+
+        ``months`` carries the same figures as the monthly chart. It is repeated
+        here because templates - notifications, markdown cards - cannot read
+        long-term statistics, so this attribute is their only way to reach them.
+        """
         year, month = self._last_month()
-        return {"month": f"{year}-{month:02d}"}
+        return {
+            "month": f"{year}-{month:02d}",
+            "months": self.coordinator.monthly_history(),
+        }
 
 
 class SolarmanTokenSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):

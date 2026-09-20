@@ -24,6 +24,7 @@ from .const import (
     DEFAULT_REGION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MONTHLY_HISTORY_LIMIT,
 )
 from .energy_statistics import async_import_monthly_production
 
@@ -89,6 +90,17 @@ class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def production_for_month(self, year: int, month: int) -> float | None:
         """Production of one calendar month, or None if the cloud has no record."""
         return self.monthly.get((year, month))
+
+    def monthly_history(self, limit: int = MONTHLY_HISTORY_LIMIT) -> dict[str, float]:
+        """Return the most recent months as ``{"YYYY-MM": kWh}``, oldest first.
+
+        Templates cannot reach long-term statistics, so this is how the history
+        behind the monthly chart is made available to notifications and cards.
+        The list is capped because it is published as a state attribute, which
+        the recorder stores on every write.
+        """
+        ordered = sorted(self.monthly.items())[-limit:]
+        return {f"{year}-{month:02d}": value for (year, month), value in ordered}
 
     async def _async_update_history(self) -> None:
         """Refresh the monthly history and hand it to long-term statistics.

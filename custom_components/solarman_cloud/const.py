@@ -36,4 +36,9 @@ PATH_HISTORY_STATS = "/maintain-s/history/power/{station_id}/stats/{scope}"
 # Long-term statistics fed with the monthly history pulled from the cloud.
 STATISTIC_MONTHLY_PRODUCTION = "{domain}:station_{station_id}_production_monthly"
 
+# How many months of history are published as a state attribute. Statistics keep
+# every month; the attribute is capped because the recorder stores it on each
+# write, and two years is more than any report needs.
+MONTHLY_HISTORY_LIMIT = 24
+
 MANUFACTURER = "Solarman"
