@@ -65,6 +65,9 @@
       "production_month": {
         "name": "Produkcja w tym miesiącu"
       },
+      "production_last_month": {
+        "name": "Produkcja w zeszłym miesiącu"
+      },
       "production_total": {
         "name": "Produkcja całkowita"
       },

@@ -30,6 +30,7 @@ import aiohttp
 from .const import (
     CLIENT_ID,
     PATH_DEVICE_LIST,
+    PATH_HISTORY_STATS,
     PATH_STATION_DETAIL,
     PATH_STATION_SEARCH,
     PATH_TOKEN,
@@ -244,6 +245,48 @@ class SolarmanCloudApi:
         if not isinstance(body, dict):
             raise SolarmanApiError(f"Unexpected station detail response: {body}")
         return body
+
+    async def _async_history_totals(
+        self, station_id: int, scope: str, field: str, params: dict[str, str] | None = None
+    ) -> dict[int, float]:
+        """Return ``{field value: kWh}`` from a production history response.
+
+        All three scopes answer with the same envelope: a ``statistics`` summary
+        plus a ``records`` list, one entry per sub-period. Which field identifies
+        a record depends on the scope (``year`` for /total, ``month`` for /year).
+        Records arrive in string order, so the caller must not rely on ordering.
+        """
+        body = await self._request(
+            "GET",
+            PATH_HISTORY_STATS.format(station_id=station_id, scope=scope),
+            params=params,
+        )
+        if not isinstance(body, dict):
+            raise SolarmanApiError(f"Unexpected history response: {body}")
+        totals: dict[int, float] = {}
+        for record in body.get("records") or []:
+            value = record.get("generationValue")
+            key = record.get(field)
+            if value is None or key is None:
+                continue
+            try:
+                totals[int(key)] = float(value)
+            except (TypeError, ValueError):
+                continue
+        return totals
+
+    async def async_get_yearly_production(self, station_id: int) -> dict[int, float]:
+        """Return ``{year: kWh}`` for every year the station has data for."""
+        return await self._async_history_totals(station_id, "total", "year")
+
+    async def async_get_monthly_production(
+        self, station_id: int, year: int
+    ) -> dict[int, float]:
+        """Return ``{month: kWh}`` for one year; months without data are absent."""
+        # aiohttp rejects non-string query values, same as form fields.
+        return await self._async_history_totals(
+            station_id, "year", "month", {"year": str(year)}
+        )
 
     async def async_get_devices(self, station_id: int) -> list[dict[str, Any]]:
         """Return the devices (inverter, logger, ...) for a station."""

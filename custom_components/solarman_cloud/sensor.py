@@ -26,6 +26,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .api import token_expiry
 from .const import CONF_STATION_NAME, CONF_WEBHOOK_ID, DOMAIN, MANUFACTURER
@@ -152,6 +153,7 @@ async def async_setup_entry(
         # Only create a sensor if the field is present and not null for this station.
         if data.get(desc.key) is not None
     ]
+    entities.append(SolarmanLastMonthSensor(coordinator, entry))
     entities.append(SolarmanTokenSensor(coordinator, entry))
     entities.append(SolarmanWebhookSensor(coordinator, entry))
     async_add_entities(entities)
@@ -190,6 +192,46 @@ class SolarmanSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
     def native_value(self) -> Any:
         """Return the current value read from coordinator data."""
         return self.entity_description.value_fn(self.coordinator.data or {})
+
+
+class SolarmanLastMonthSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):
+    """Production over the previous calendar month.
+
+    The live station summary only carries the running month, so the value comes
+    from the monthly history the coordinator pulls from the cloud.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "production_last_month"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    # No state class on purpose: the value jumps to a different month's total at
+    # every month boundary, which the recorder would read as a meter reset. The
+    # full series lives in the imported monthly statistic instead.
+    _attr_icon = "mdi:calendar-arrow-left"
+
+    def __init__(self, coordinator: SolarmanCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.unique_id}_production_last_month"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, str(coordinator.station_id))}
+        )
+
+    def _last_month(self) -> tuple[int, int]:
+        """Return (year, month) of the month before the current local one."""
+        now = dt_util.now()
+        return (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+
+    @property
+    def native_value(self) -> float | None:
+        """Last month's production, or None until the history has been read."""
+        return self.coordinator.production_for_month(*self._last_month())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Name the month the value belongs to, which is otherwise implicit."""
+        year, month = self._last_month()
+        return {"month": f"{year}-{month:02d}"}
 
 
 class SolarmanTokenSensor(CoordinatorEntity[SolarmanCoordinator], SensorEntity):

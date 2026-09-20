@@ -29,5 +29,11 @@ PATH_TOKEN = "/oauth2-s/oauth/token"
 PATH_STATION_SEARCH = "/maintain-s/operating/station/search"
 PATH_STATION_DETAIL = "/maintain-s/station/"
 PATH_DEVICE_LIST = "/maintain-s/power/system/deviceList"
+# Production history. ``scope`` is total (one record per year), year (one record
+# per month) or month (one record per day).
+PATH_HISTORY_STATS = "/maintain-s/history/power/{station_id}/stats/{scope}"
+
+# Long-term statistics fed with the monthly history pulled from the cloud.
+STATISTIC_MONTHLY_PRODUCTION = "{domain}:station_{station_id}_production_monthly"
 
 MANUFACTURER = "Solarman"

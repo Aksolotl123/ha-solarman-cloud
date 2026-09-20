@@ -63,9 +63,47 @@ wyłącznie przeniesienie tokenu.
 - Sensory (tworzone tylko, jeśli dane są dostępne dla Twojej instalacji):
   - Bieżąca produkcja `[W]`, bieżące zużycie `[W]`
   - Moc sieci / pobór z sieci `[W]`
-  - Produkcja dziś / w miesiącu / całkowita `[kWh]` (gotowe do panelu **Energia**)
+  - Produkcja dziś / w tym miesiącu / w zeszłym miesiącu / całkowita `[kWh]`
+    (dziś / w miesiącu / całkowita są gotowe do panelu **Energia**)
   - Stan baterii `[%]` (jeśli masz magazyn)
   - Temperatura, status sieci, czas ostatniej aktualizacji (diagnostyka)
+- Import **historii miesięcznej** z chmury do statystyk Home Assistanta —
+  wykres produkcji miesiąc po miesiącu od początku działania instalacji,
+  a nie od dnia instalacji integracji (zob. niżej).
+
+## Wykres produkcji miesiąc po miesiącu
+
+Home Assistant zna tylko to, co sam zapisał, więc świeżo zainstalowana
+integracja miałaby wykres zaczynający się dzisiaj. Solarman pamięta wszystkie
+miesiące od uruchomienia instalacji, więc integracja pobiera tę historię
+(`/maintain-s/history/power/<id>/stats/year`) i zapisuje ją jako **statystykę
+zewnętrzną**:
+
+```
+solarman_cloud:station_<ID_INSTALACJI>_production_monthly
+```
+
+Jeden punkt na miesiąc, z sumą narastającą — Home Assistant rysuje z tego
+słupek na miesiąc. Historia jest odświeżana przy każdym odpytaniu (bieżący
+miesiąc rośnie), a zakończone lata pobierane są tylko raz, przy starcie.
+
+Aby zobaczyć wykres, dodaj do dashboardu kartę (*Dodaj kartę* → *Ręcznie*):
+
+```yaml
+type: statistics-graph
+title: Produkcja miesięczna
+entities:
+  - solarman_cloud:station_64944995_production_monthly   # podmień ID instalacji
+period: month
+stat_types:
+  - change
+chart_type: bar
+days_to_show: 1095
+```
+
+ID instalacji znajdziesz w adresie encji lub w logu integracji. Ta statystyka
+jest celowo **osobna** od sensora produkcji — nie dodawaj jej do panelu
+**Energia**, bo produkcja liczyłaby się podwójnie.
 
 ## Instalacja przez HACS
 

@@ -3,10 +3,13 @@
   "name": "Solarman Cloud (account login)",
   "codeowners": [],
   "config_flow": true,
-  "dependencies": ["webhook"],
+  "dependencies": [
+    "webhook",
+    "recorder"
+  ],
   "documentation": "https://github.com/Aksolotl123/ha-solarman-cloud",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Aksolotl123/ha-solarman-cloud/issues",
   "requirements": [],
-  "version": "0.5.1"
+  "version": "0.6.0"
 }
