@@ -274,7 +274,7 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._station_missing(entry):
                     errors["base"] = "station_not_found"
                 else:
-                    return self.async_update_reload_and_abort(
+                    return self.async_update_and_abort(
                         entry, data={**entry.data, **data}
                     )
 
@@ -318,7 +318,7 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
                     if self._station_missing(entry):
                         errors["base"] = "station_not_found"
                     else:
-                        return self.async_update_reload_and_abort(
+                        return self.async_update_and_abort(
                             entry,
                             data={
                                 **entry.data,
@@ -352,7 +352,7 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             data = await self._async_check_openapi(user_input, errors)
             if data is not None:
-                return self.async_update_reload_and_abort(
+                return self.async_update_and_abort(
                     entry, data={**entry.data, **data}
                 )
 
@@ -385,7 +385,7 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error validating Solarman token")
                 errors["base"] = "unknown"
             else:
-                return self.async_update_reload_and_abort(
+                return self.async_update_and_abort(
                     entry, data={**entry.data, CONF_REFRESH_TOKEN: token}
                 )
 

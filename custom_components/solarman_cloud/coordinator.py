@@ -51,6 +51,20 @@ def auth_mode(data: Mapping[str, Any]) -> str:
     return data.get(CONF_AUTH_MODE, AUTH_MODE_PORTAL)
 
 
+def credentials(data: Mapping[str, Any]) -> tuple[Any, ...]:
+    """What decides how an entry signs in, apart from the rotating portal token."""
+    return (
+        auth_mode(data),
+        data.get(CONF_APP_ID),
+        data.get(CONF_APP_SECRET),
+        data.get(CONF_EMAIL),
+        data.get(CONF_PASSWORD_HASH),
+        data.get(CONF_OPENAPI_URL),
+        data.get(CONF_BASE_URL),
+        data.get(CONF_REGION),
+    )
+
+
 def build_openapi(hass: HomeAssistant, data: Mapping[str, Any]) -> SolarmanOpenApi:
     """Create an official API client from entry (or flow) data."""
     return SolarmanOpenApi(
@@ -81,6 +95,9 @@ class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._history_years: set[int] = set()
 
         self.auth_mode = auth_mode(entry.data)
+        self.credentials = credentials(entry.data)
+        # The unmodified live summary, kept for diagnostics.
+        self.raw: dict[str, Any] = {}
         self.api: SolarmanCloudApi | SolarmanOpenApi
         if self.auth_mode == AUTH_MODE_OPENAPI:
             self.api = build_openapi(hass, entry.data)
@@ -212,6 +229,7 @@ class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except SolarmanApiError as err:
             raise UpdateFailed(f"Error communicating with Solarman: {err}") from err
 
+        self.raw = dict(data)
         await self._async_update_history()
         self._fill_totals_from_history(data)
         return data

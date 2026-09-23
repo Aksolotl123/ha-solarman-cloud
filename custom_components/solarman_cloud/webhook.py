@@ -119,14 +119,16 @@ async def _async_handle_token(
         # async_refresh may already have rotated it; store the newest one.
         newest = api.refresh_token
         _LAST_ACCEPTED[entry.entry_id] = token
-        hass.config_entries.async_update_entry(
-            entry, data={**entry.data, CONF_REFRESH_TOKEN: newest}
-        )
 
         # Hand the token to the running client instead of reloading the entry.
+        # This goes first: the update listener reloads when the stored token
+        # differs from the one the client holds.
         coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
         if coordinator is not None:
             coordinator.api.set_refresh_token(newest)
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_REFRESH_TOKEN: newest}
+        )
 
         exp = token_expiry(newest)
         _LOGGER.info(

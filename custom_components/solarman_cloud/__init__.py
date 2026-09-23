@@ -9,12 +9,13 @@ from homeassistant.core import HomeAssistant
 from . import webhook as token_webhook
 from .const import (
     AUTH_MODE_PORTAL,
+    CONF_REFRESH_TOKEN,
     CONF_SCAN_INTERVAL,
     CONF_WEBHOOK_ID,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .coordinator import SolarmanCoordinator
+from .coordinator import SolarmanCoordinator, credentials
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -54,19 +55,33 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload only when the polling interval actually changed.
+    """Reload when the interval or the way of signing in actually changed.
 
     Every token rotation rewrites entry.data, which also fires this listener.
-    Reloading on those would restart the integration constantly, so compare the
-    interval and ignore everything else.
+    Reloading on those would restart the integration constantly, so a portal
+    token only counts as changed when the running client does not already hold
+    it - which is the case after reauth, but not after a rotation or a token
+    delivered by the browser script. Reconfigure and reauth rely on this
+    listener for their reload.
     """
     coordinator: SolarmanCoordinator | None = hass.data.get(DOMAIN, {}).get(
         entry.entry_id
     )
+    if coordinator is None:
+        await hass.config_entries.async_reload(entry.entry_id)
+        return
     new_interval = int(
         entry.options.get(
             CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
     )
-    if coordinator is None or coordinator.scan_interval != new_interval:
+    token_changed = (
+        coordinator.auth_mode == AUTH_MODE_PORTAL
+        and entry.data.get(CONF_REFRESH_TOKEN) != coordinator.api.refresh_token
+    )
+    if (
+        coordinator.scan_interval != new_interval
+        or coordinator.credentials != credentials(entry.data)
+        or token_changed
+    ):
         await hass.config_entries.async_reload(entry.entry_id)
