@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from . import webhook as token_webhook
 from .const import (
+    AUTH_MODE_PORTAL,
     CONF_SCAN_INTERVAL,
     CONF_WEBHOOK_ID,
     DEFAULT_SCAN_INTERVAL,
@@ -35,7 +36,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_setup()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
-    await token_webhook.async_register(hass, entry)
+    if coordinator.auth_mode == AUTH_MODE_PORTAL:
+        # Only the portal token needs feeding from the browser.
+        await token_webhook.async_register(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

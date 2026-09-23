@@ -3,7 +3,26 @@
     "step": {
       "user": {
         "title": "Solarman Cloud",
-        "description": "Solarman blocks scripted password logins with a slider CAPTCHA, so this integration uses a refresh token instead. Sign in at home.solarmanpv.com in your browser, then copy the value of the cookie named 442287045fabeaa868450dec4baee7f4 and paste it below.",
+        "description": "How should Home Assistant sign in to Solarman?",
+        "menu_options": {
+          "openapi": "Official API (App ID + App Secret) - recommended",
+          "portal": "Token copied from the web portal (fallback)"
+        }
+      },
+      "openapi": {
+        "title": "Official Solarman API",
+        "description": "Enter the App ID and App Secret Solarman sent you, plus the e-mail and password of your SOLARMAN Smart account. Only a SHA-256 digest of the password is stored.",
+        "data": {
+          "app_id": "App ID",
+          "app_secret": "App Secret",
+          "email": "Account e-mail",
+          "password": "Account password",
+          "openapi_url": "API address"
+        }
+      },
+      "portal": {
+        "title": "Web portal token",
+        "description": "Solarman blocks scripted password logins with a slider CAPTCHA, so this mode uses a refresh token instead. Sign in at home.solarmanpv.com in your browser, then copy the value of the cookie named 442287045fabeaa868450dec4baee7f4 and paste it below.",
         "data": {
           "refresh_token": "Refresh token",
           "region": "Region code (e.g. PL)",
@@ -16,9 +35,46 @@
           "station_id": "Station"
         }
       },
+      "reconfigure": {
+        "title": "Change sign-in method",
+        "description": "The station, its entities and their history stay as they are; only the way of signing in changes.",
+        "menu_options": {
+          "reconfigure_openapi": "Official API (App ID + App Secret) - recommended",
+          "reconfigure_portal": "Token copied from the web portal (fallback)"
+        }
+      },
+      "reconfigure_openapi": {
+        "title": "Official Solarman API",
+        "description": "Enter the App ID and App Secret Solarman sent you, plus the e-mail and password of your SOLARMAN Smart account. Only a SHA-256 digest of the password is stored.",
+        "data": {
+          "app_id": "App ID",
+          "app_secret": "App Secret",
+          "email": "Account e-mail",
+          "password": "Account password",
+          "openapi_url": "API address"
+        }
+      },
+      "reconfigure_portal": {
+        "title": "Web portal token",
+        "description": "Paste a fresh refresh token, or leave the field empty to reuse the one stored earlier.",
+        "data": {
+          "refresh_token": "Refresh token"
+        }
+      },
+      "reauth_openapi": {
+        "title": "Sign in again",
+        "description": "Solarman rejected the stored credentials. Enter them again.",
+        "data": {
+          "app_id": "App ID",
+          "app_secret": "App Secret",
+          "email": "Account e-mail",
+          "password": "Account password",
+          "openapi_url": "API address"
+        }
+      },
       "reauth_confirm": {
         "title": "Token expired",
-        "description": "Solarman blocks scripted password logins with a slider CAPTCHA, so this integration uses a refresh token instead. Sign in at home.solarmanpv.com in your browser, then copy the value of the cookie named 442287045fabeaa868450dec4baee7f4 and paste it below.",
+        "description": "Solarman blocks scripted password logins with a slider CAPTCHA, so this mode uses a refresh token instead. Sign in at home.solarmanpv.com in your browser, then copy the value of the cookie named 442287045fabeaa868450dec4baee7f4 and paste it below.",
         "data": {
           "refresh_token": "Refresh token"
         }
@@ -28,11 +84,14 @@
       "cannot_connect": "Could not connect to the Solarman cloud.",
       "no_stations": "No stations found on this account.",
       "unknown": "Unexpected error - see the Home Assistant log.",
-      "invalid_token": "Token rejected - sign in again and copy a fresh one."
+      "invalid_token": "Token rejected - sign in again and copy a fresh one.",
+      "invalid_auth": "Sign-in rejected - check the App ID, App Secret, e-mail and password.",
+      "station_not_found": "This station is not on the account you signed in with."
     },
     "abort": {
       "already_configured": "This station is already configured.",
-      "reauth_successful": "Token updated."
+      "reauth_successful": "Credentials updated.",
+      "reconfigure_successful": "Sign-in method changed."
     }
   },
   "options": {

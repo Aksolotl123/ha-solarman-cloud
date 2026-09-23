@@ -3,7 +3,26 @@
     "step": {
       "user": {
         "title": "Solarman Cloud",
-        "description": "Solarman blokuje logowanie hasłem przez skrypt (captcha z suwakiem), dlatego integracja używa tokenu odświeżania. Zaloguj się w przeglądarce na home.solarmanpv.com, skopiuj wartość ciasteczka o nazwie 442287045fabeaa868450dec4baee7f4 i wklej ją poniżej.",
+        "description": "Jak Home Assistant ma się logować do Solarman?",
+        "menu_options": {
+          "openapi": "Oficjalne API (App ID + App Secret) - zalecane",
+          "portal": "Token skopiowany z portalu (zapasowo)"
+        }
+      },
+      "openapi": {
+        "title": "Oficjalne API Solarman",
+        "description": "Wpisz App ID i App Secret otrzymane od Solarman oraz e-mail i hasło konta SOLARMAN Smart. Zapisywany jest tylko skrót SHA-256 hasła, nie samo hasło.",
+        "data": {
+          "app_id": "App ID",
+          "app_secret": "App Secret",
+          "email": "E-mail konta",
+          "password": "Hasło konta",
+          "openapi_url": "Adres API"
+        }
+      },
+      "portal": {
+        "title": "Token z portalu",
+        "description": "Solarman blokuje logowanie hasłem przez skrypt (captcha z suwakiem), dlatego ten tryb używa tokenu odświeżania. Zaloguj się w przeglądarce na home.solarmanpv.com, skopiuj wartość ciasteczka o nazwie 442287045fabeaa868450dec4baee7f4 i wklej ją poniżej.",
         "data": {
           "refresh_token": "Token odświeżania",
           "region": "Kod regionu (np. PL)",
@@ -16,9 +35,46 @@
           "station_id": "Instalacja"
         }
       },
+      "reconfigure": {
+        "title": "Zmień sposób logowania",
+        "description": "Instalacja, jej encje i historia zostają bez zmian - zmienia się tylko sposób logowania.",
+        "menu_options": {
+          "reconfigure_openapi": "Oficjalne API (App ID + App Secret) - zalecane",
+          "reconfigure_portal": "Token skopiowany z portalu (zapasowo)"
+        }
+      },
+      "reconfigure_openapi": {
+        "title": "Oficjalne API Solarman",
+        "description": "Wpisz App ID i App Secret otrzymane od Solarman oraz e-mail i hasło konta SOLARMAN Smart. Zapisywany jest tylko skrót SHA-256 hasła, nie samo hasło.",
+        "data": {
+          "app_id": "App ID",
+          "app_secret": "App Secret",
+          "email": "E-mail konta",
+          "password": "Hasło konta",
+          "openapi_url": "Adres API"
+        }
+      },
+      "reconfigure_portal": {
+        "title": "Token z portalu",
+        "description": "Wklej świeży token odświeżania albo zostaw pole puste, żeby użyć tokenu zapisanego wcześniej.",
+        "data": {
+          "refresh_token": "Token odświeżania"
+        }
+      },
+      "reauth_openapi": {
+        "title": "Zaloguj się ponownie",
+        "description": "Solarman odrzucił zapisane dane logowania. Wpisz je ponownie.",
+        "data": {
+          "app_id": "App ID",
+          "app_secret": "App Secret",
+          "email": "E-mail konta",
+          "password": "Hasło konta",
+          "openapi_url": "Adres API"
+        }
+      },
       "reauth_confirm": {
         "title": "Token wygasł",
-        "description": "Solarman blokuje logowanie hasłem przez skrypt (captcha z suwakiem), dlatego integracja używa tokenu odświeżania. Zaloguj się w przeglądarce na home.solarmanpv.com, skopiuj wartość ciasteczka o nazwie 442287045fabeaa868450dec4baee7f4 i wklej ją poniżej.",
+        "description": "Solarman blokuje logowanie hasłem przez skrypt (captcha z suwakiem), dlatego ten tryb używa tokenu odświeżania. Zaloguj się w przeglądarce na home.solarmanpv.com, skopiuj wartość ciasteczka o nazwie 442287045fabeaa868450dec4baee7f4 i wklej ją poniżej.",
         "data": {
           "refresh_token": "Token odświeżania"
         }
@@ -28,11 +84,14 @@
       "cannot_connect": "Nie udało się połączyć z chmurą Solarman.",
       "no_stations": "Nie znaleziono instalacji na tym koncie.",
       "unknown": "Nieoczekiwany błąd - sprawdź log Home Assistant.",
-      "invalid_token": "Token odrzucony - zaloguj się ponownie i skopiuj nowy."
+      "invalid_token": "Token odrzucony - zaloguj się ponownie i skopiuj nowy.",
+      "invalid_auth": "Logowanie odrzucone - sprawdź App ID, App Secret, e-mail i hasło.",
+      "station_not_found": "Tej instalacji nie ma na koncie, na które się zalogowano."
     },
     "abort": {
       "already_configured": "Ta instalacja jest już skonfigurowana.",
-      "reauth_successful": "Token zaktualizowany."
+      "reauth_successful": "Dane logowania zaktualizowane.",
+      "reconfigure_successful": "Sposób logowania zmieniony."
     }
   },
   "options": {

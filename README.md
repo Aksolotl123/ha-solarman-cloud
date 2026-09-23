@@ -4,13 +4,30 @@ Integracja Home Assistant, która pobiera dane instalacji fotowoltaicznej z **ch
 Solarman**, logując się **tym samym kontem co aplikacja Solarman Smart**. Nie wymaga, aby Home Assistant i falownik były w tej samej sieci — dane idą
 przez chmurę, tak jak w aplikacji na telefon.
 
-> **Uwaga:** integracja korzysta z prywatnego, nieudokumentowanego API portalu
-> SolarmanPV (`grant_type=refresh_token`). Może przestać działać po zmianach po
-> stronie Solarman i prawdopodobnie wykracza poza oficjalny regulamin. Oficjalną,
-> wspieraną drogą jest OpenAPI z App ID / App Secret (do uzyskania mailowo od
-> Solarman) — zob. sekcję *Alternatywa* poniżej.
+Integracja ma **dwa tryby logowania**, wybierane przy dodawaniu:
 
-## Jak działa uwierzytelnianie (ważne)
+1. **Oficjalne API (zalecane)** — App ID i App Secret, o które prosi się mailowo
+   Solarman (`customerservice@solarmanpv.com`), oraz e-mail i hasło konta
+   SOLARMAN Smart. Integracja loguje się sama, bez captchy, bez tokenu z przeglądarki
+   i bez daty ważności. Zapisywany jest tylko skrót SHA-256 hasła.
+   Dla kont Smart API jest darmowe przy ≤3 instalacjach i ≤200 000 wywołań rocznie.
+2. **Token z portalu (zapasowo)** — prywatne, nieudokumentowane API portalu
+   SolarmanPV (`grant_type=refresh_token`), opisane niżej. Może przestać działać
+   po zmianach po stronie Solarman.
+
+Tryb istniejącej instalacji zmienisz w **Ustawienia → Urządzenia i usługi →
+Solarman Cloud → ⋮ → Skonfiguruj ponownie**. Encje i ich historia zostają te same.
+
+## Oficjalne API
+
+Adres domyślny to `https://globalapi.solarmanpv.com` (konta spoza Chin — taki
+podaje Solarman w mailu z kluczem). Konta chińskiej chmury używają
+`https://api.solarmanpv.com`. Oficjalne API nie zawsze podaje sumy dzienne,
+miesięczne i całkowite w danych bieżących — wtedy integracja liczy je z historii
+produkcji (dzień po dniu i miesiąc po miesiącu), więc encje są te same w obu trybach.
+Encje „Token ważny do” i „Adres webhooka tokenu” istnieją tylko w trybie tokenu.
+
+## Tryb tokenu z portalu — jak działa uwierzytelnianie
 
 Solarman chroni logowanie hasłem **captchą z suwakiem** — zapytanie wysłane przez
 skrypt dostaje `HTTP 412 AUTH_SLIDE_ERROR`. Dlatego integracja **nie loguje się
@@ -134,17 +151,11 @@ najstarszego. Przykład: ostatnie 12 miesięcy w powiadomieniu:
 Skopiuj katalog `custom_components/solarman_cloud/` do `config/custom_components/`
 w swojej instancji Home Assistant i zrestartuj.
 
-## Region i adres API
+## Region i adres API (tryb tokenu)
 
 Domyślnie `https://home.solarmanpv.com` (Europa, w tym Polska). Jeśli w aplikacji
 logujesz się do innego regionu, może być potrzebny inny host (np.
 `https://globalhome.solarmanpv.com`) i inny kod regionu.
-
-## Alternatywa: oficjalne OpenAPI
-
-Jeśli zależy Ci na stabilności, napisz do `customerservice@solarmanpv.com` z prośbą
-o **App ID / App Secret** i użyj integracji opartej na oficjalnym API, np.
-[`norberttech/ha-solarman-api`](https://github.com/norberttech/ha-solarman-api).
 
 ## Sterowanie / dane lokalne
 

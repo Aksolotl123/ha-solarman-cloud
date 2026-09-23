@@ -29,7 +29,13 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .api import token_expiry
-from .const import CONF_STATION_NAME, CONF_WEBHOOK_ID, DOMAIN, MANUFACTURER
+from .const import (
+    AUTH_MODE_PORTAL,
+    CONF_STATION_NAME,
+    CONF_WEBHOOK_ID,
+    DOMAIN,
+    MANUFACTURER,
+)
 from .coordinator import SolarmanCoordinator
 
 
@@ -44,6 +50,10 @@ def _as_timestamp(data: dict[str, Any]) -> datetime | None:
     ts = data.get("lastUpdateTime")
     if not ts:
         return None
+    ts = float(ts)
+    if ts > 1e11:
+        # Milliseconds rather than seconds; not every endpoint uses the same unit.
+        ts /= 1000
     return datetime.fromtimestamp(int(ts), tz=timezone.utc)
 
 
@@ -157,8 +167,10 @@ async def async_setup_entry(
     ]
     entities.append(SolarmanYesterdaySensor(coordinator, entry))
     entities.append(SolarmanLastMonthSensor(coordinator, entry))
-    entities.append(SolarmanTokenSensor(coordinator, entry))
-    entities.append(SolarmanWebhookSensor(coordinator, entry))
+    if coordinator.auth_mode == AUTH_MODE_PORTAL:
+        # The official API signs in by itself; there is no token to watch or feed.
+        entities.append(SolarmanTokenSensor(coordinator, entry))
+        entities.append(SolarmanWebhookSensor(coordinator, entry))
     async_add_entities(entities)
 
 

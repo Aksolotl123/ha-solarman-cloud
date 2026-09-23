@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -12,15 +13,29 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import SolarmanApiError, SolarmanAuthError, SolarmanCloudApi
+from .api import (
+    SolarmanApiError,
+    SolarmanAuthError,
+    SolarmanCloudApi,
+    SolarmanOpenApi,
+)
 from .const import (
+    AUTH_MODE_OPENAPI,
+    AUTH_MODE_PORTAL,
+    CONF_APP_ID,
+    CONF_APP_SECRET,
+    CONF_AUTH_MODE,
     CONF_BASE_URL,
+    CONF_EMAIL,
+    CONF_OPENAPI_URL,
+    CONF_PASSWORD_HASH,
     CONF_REFRESH_TOKEN,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
     CONF_STATION_ID,
     CONF_STATION_NAME,
     DEFAULT_BASE_URL,
+    DEFAULT_OPENAPI_URL,
     DEFAULT_REGION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -29,6 +44,23 @@ from .const import (
 from .energy_statistics import async_import_monthly_production
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def auth_mode(data: Mapping[str, Any]) -> str:
+    """Return how an entry signs in; entries older than the choice use the portal."""
+    return data.get(CONF_AUTH_MODE, AUTH_MODE_PORTAL)
+
+
+def build_openapi(hass: HomeAssistant, data: Mapping[str, Any]) -> SolarmanOpenApi:
+    """Create an official API client from entry (or flow) data."""
+    return SolarmanOpenApi(
+        async_get_clientsession(hass),
+        data[CONF_APP_ID],
+        data[CONF_APP_SECRET],
+        data[CONF_EMAIL],
+        data[CONF_PASSWORD_HASH],
+        data.get(CONF_OPENAPI_URL, DEFAULT_OPENAPI_URL),
+    )
 
 
 class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -48,14 +80,18 @@ class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.daily: dict[tuple[int, int, int], float] = {}
         self._history_years: set[int] = set()
 
-        session = async_get_clientsession(hass)
-        self.api = SolarmanCloudApi(
-            session,
-            entry.data[CONF_REFRESH_TOKEN],
-            entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
-            entry.data.get(CONF_REGION, DEFAULT_REGION),
-            token_saver=self._save_refresh_token,
-        )
+        self.auth_mode = auth_mode(entry.data)
+        self.api: SolarmanCloudApi | SolarmanOpenApi
+        if self.auth_mode == AUTH_MODE_OPENAPI:
+            self.api = build_openapi(hass, entry.data)
+        else:
+            self.api = SolarmanCloudApi(
+                async_get_clientsession(hass),
+                entry.data[CONF_REFRESH_TOKEN],
+                entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
+                entry.data.get(CONF_REGION, DEFAULT_REGION),
+                token_saver=self._save_refresh_token,
+            )
 
         self.scan_interval = int(
             entry.options.get(
@@ -177,4 +213,26 @@ class SolarmanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(f"Error communicating with Solarman: {err}") from err
 
         await self._async_update_history()
+        self._fill_totals_from_history(data)
         return data
+
+    def _fill_totals_from_history(self, data: dict[str, Any]) -> None:
+        """Supply energy totals the live summary lacks, from the history.
+
+        The portal summary carries today, this month and the lifetime total; the
+        official real-time answer may not. Only missing values are filled, so
+        whatever the cloud reports directly always wins.
+        """
+        today = dt_util.now().date()
+        this_month = [
+            value
+            for (year, month, _day), value in self.daily.items()
+            if (year, month) == (today.year, today.month)
+        ]
+        if data.get("generationValue") is None and self.daily:
+            # No record for today yet means nothing has been produced.
+            data["generationValue"] = self.production_for_day(today) or 0.0
+        if data.get("generationMonth") is None and self.daily:
+            data["generationMonth"] = round(sum(this_month), 2)
+        if data.get("generationTotal") is None and self.monthly:
+            data["generationTotal"] = round(sum(self.monthly.values()), 2)

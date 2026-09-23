@@ -12,23 +12,34 @@ The refresh token is rotated on every renewal, so the caller must persist the ne
 value through ``token_saver`` or access will be lost once the old one expires.
 
 This is a private, undocumented API and may change without notice. The supported
-alternative is Solarman's official OpenAPI with an App ID / App Secret.
+alternative is Solarman's official OpenAPI with an App ID / App Secret, which
+``SolarmanOpenApi`` below speaks. Both clients offer the same high-level methods
+and return the station summary under the portal's field names, so the
+coordinator and sensors do not care which one is in use.
 """
 from __future__ import annotations
 
 import base64
 import binascii
+import calendar
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from json import loads as json_loads
 from collections.abc import Callable
 from typing import Any
 
 import aiohttp
 
+from homeassistant.util import dt as dt_util
+
 from .const import (
     CLIENT_ID,
+    OPENAPI_PATH_STATION_DEVICES,
+    OPENAPI_PATH_STATION_HISTORY,
+    OPENAPI_PATH_STATION_LIST,
+    OPENAPI_PATH_STATION_REALTIME,
+    OPENAPI_PATH_TOKEN,
     PATH_DEVICE_LIST,
     PATH_HISTORY_STATS,
     PATH_STATION_DETAIL,
@@ -313,3 +324,251 @@ class _Unauthorized:
 
 
 _UNAUTHORIZED = _Unauthorized()
+
+
+# Station history granularities of the official API. The period bounds are
+# inclusive and must be written as ``yyyy-MM-dd`` for days and ``yyyy-MM`` for
+# months; a day-style bound on the month scale is refused with "invalid param".
+_HISTORY_DAYS = 2
+_HISTORY_MONTHS = 3
+
+# The official API answers errors with HTTP 200 and ``success: false``. An
+# expired token shows up that way too, so a message mentioning the token is
+# answered by signing in again before giving up.
+_TOKEN_HINTS = ("token", "auth")
+
+# How far back the first history scan looks for a year with data.
+_MAX_HISTORY_YEARS = 15
+
+
+def _as_float(value: Any) -> float | None:
+    """Read a number the API may send as a string, or None."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+class SolarmanOpenApi:
+    """Async client for Solarman's official OpenAPI (App ID + App Secret).
+
+    Signing in takes the account e-mail and the SHA-256 digest of its password;
+    the plain password is never needed, so the caller stores only the digest.
+    """
+
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        app_id: str,
+        app_secret: str,
+        email: str,
+        password_hash: str,
+        base_url: str,
+    ) -> None:
+        """Initialise the client with the developer and account credentials."""
+        self._session = session
+        self._app_id = app_id
+        self._app_secret = app_secret
+        self._email = email
+        self._password_hash = password_hash
+        self._base_url = base_url.rstrip("/")
+
+        self._access_token: str | None = None
+        self._expires_at: float = 0.0
+
+    # -- auth ---------------------------------------------------------------
+
+    async def async_login(self) -> None:
+        """Obtain an access token (valid for about 60 days)."""
+        body = await self._post(
+            OPENAPI_PATH_TOKEN,
+            {
+                "appSecret": self._app_secret,
+                "email": self._email,
+                "password": self._password_hash,
+            },
+            params={"appId": self._app_id, "language": "en"},
+            authed=False,
+        )
+        if body is _UNAUTHORIZED:
+            raise SolarmanAuthError("Solarman OpenAPI sign-in rejected (HTTP 401)")
+        token = body.get("access_token")
+        if body.get("success") is False or not token:
+            # Never echo the request: it carries the secret and password digest.
+            raise SolarmanAuthError(
+                f"Solarman OpenAPI sign-in rejected: "
+                f"{body.get('code')} {body.get('msg')}"
+            )
+        self._access_token = str(token)
+        expires_in = int(_as_float(body.get("expires_in")) or 86400)
+        self._expires_at = time.time() + max(expires_in - 3600, 60)
+
+    async def _request(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST an authenticated request, signing in again once if refused."""
+        if self._access_token is None or time.time() >= self._expires_at:
+            await self.async_login()
+        body = await self._post(path, payload)
+        if body is _UNAUTHORIZED or _looks_like_token_error(body):
+            await self.async_login()
+            body = await self._post(path, payload)
+            if body is _UNAUTHORIZED:
+                raise SolarmanAuthError("Still unauthorized after signing in again")
+        if body.get("success") is False:
+            raise SolarmanApiError(
+                f"{path} failed: {body.get('code')} {body.get('msg')}"
+            )
+        return body
+
+    async def _post(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        *,
+        params: dict[str, str] | None = None,
+        authed: bool = True,
+    ) -> Any:
+        """Make one POST and return the decoded body, or ``_UNAUTHORIZED``."""
+        headers = {"Content-Type": "application/json"}
+        if authed:
+            headers["Authorization"] = f"bearer {self._access_token}"
+        try:
+            async with self._session.post(
+                self._base_url + path,
+                json=payload,
+                params=params or {"language": "en"},
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+            ) as resp:
+                if resp.status == 401:
+                    return _UNAUTHORIZED
+                status = resp.status
+                raw = await resp.text()
+        except aiohttp.ClientError as err:
+            raise SolarmanApiError(f"Request to {path} failed: {err}") from err
+        try:
+            body = json_loads(raw)
+        except ValueError:
+            body = None
+        if status >= 400 or not isinstance(body, dict):
+            raise SolarmanApiError(f"{path} answered HTTP {status}: {raw[:300]}")
+        return body
+
+    # -- high level ---------------------------------------------------------
+
+    async def async_get_stations(self) -> list[dict[str, Any]]:
+        """Return the account's stations."""
+        body = await self._request(
+            OPENAPI_PATH_STATION_LIST, {"page": 1, "size": 100}
+        )
+        return body.get("stationList") or []
+
+    async def async_get_station_detail(self, station_id: int) -> dict[str, Any]:
+        """Return the station's list entry, which carries its static detail."""
+        for station in await self.async_get_stations():
+            if station.get("id") == station_id:
+                return station
+        raise SolarmanApiError(f"Station {station_id} not found")
+
+    async def async_get_station(self, station_id: int) -> dict[str, Any]:
+        """Return the live summary for one station, under the portal's names.
+
+        The list entry supplies the network status and last update time, the
+        real-time call the current power. Energy totals the real-time answer
+        lacks are filled in by the coordinator from the production history.
+        """
+        data = dict(await self.async_get_station_detail(station_id))
+        realtime = await self._request(
+            OPENAPI_PATH_STATION_REALTIME, {"stationId": station_id}
+        )
+        for key, value in realtime.items():
+            if key not in ("code", "msg", "success", "requestId") and value is not None:
+                data[key] = value
+        # Same meaning, different name from the portal's.
+        if data.get("buyPower") is None and data.get("purchasePower") is not None:
+            data["buyPower"] = data["purchasePower"]
+        return data
+
+    async def _async_history(
+        self, station_id: int, time_type: int, start: str, end: str
+    ) -> list[dict[str, Any]]:
+        """Return the station history records between two inclusive bounds."""
+        body = await self._request(
+            OPENAPI_PATH_STATION_HISTORY,
+            {
+                "stationId": station_id,
+                "timeType": time_type,
+                "startTime": start,
+                "endTime": end,
+            },
+        )
+        return body.get("stationDataItems") or []
+
+    async def async_get_monthly_production(
+        self, station_id: int, year: int
+    ) -> dict[int, float]:
+        """Return ``{month: kWh}`` for one year; months without data are absent."""
+        today = dt_util.now().date()
+        if year > today.year:
+            return {}
+        last_month = today.month if year == today.year else 12
+        totals: dict[int, float] = {}
+        for record in await self._async_history(
+            station_id, _HISTORY_MONTHS, f"{year}-01", f"{year}-{last_month:02d}"
+        ):
+            value = _as_float(record.get("generationValue"))
+            month = record.get("month")
+            if value is None or not month:
+                continue
+            totals[int(month)] = value
+        return totals
+
+    async def async_get_yearly_production(self, station_id: int) -> dict[int, float]:
+        """Return ``{year: kWh}`` for every year the station has data for.
+
+        Built from the monthly scale, whose request format is known to work,
+        walking back from this year until a year comes back empty.
+        """
+        years: dict[int, float] = {}
+        year = dt_util.now().year
+        for _ in range(_MAX_HISTORY_YEARS):
+            months = await self.async_get_monthly_production(station_id, year)
+            if not months:
+                break
+            years[year] = sum(months.values())
+            year -= 1
+        return years
+
+    async def async_get_daily_production(
+        self, station_id: int, year: int, month: int
+    ) -> dict[int, float]:
+        """Return ``{day: kWh}`` for one month; days without data are absent."""
+        today = dt_util.now().date()
+        first = date(year, month, 1)
+        if first > today:
+            return {}
+        last = min(date(year, month, calendar.monthrange(year, month)[1]), today)
+        totals: dict[int, float] = {}
+        for record in await self._async_history(
+            station_id, _HISTORY_DAYS, first.isoformat(), last.isoformat()
+        ):
+            value = _as_float(record.get("generationValue"))
+            day = record.get("day")
+            if value is None or not day:
+                continue
+            totals[int(day)] = value
+        return totals
+
+    async def async_get_devices(self, station_id: int) -> list[dict[str, Any]]:
+        """Return the devices (inverter, logger, ...) for a station."""
+        body = await self._request(
+            OPENAPI_PATH_STATION_DEVICES, {"stationId": station_id}
+        )
+        return body.get("deviceListItems") or []
+
+
+def _looks_like_token_error(body: Any) -> bool:
+    """Whether a ``success: false`` answer blames the access token."""
+    if not isinstance(body, dict) or body.get("success") is not False:
+        return False
+    message = f"{body.get('code')} {body.get('msg')}".lower()
+    return any(hint in message for hint in _TOKEN_HINTS)
