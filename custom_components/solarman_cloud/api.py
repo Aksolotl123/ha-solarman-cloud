@@ -337,6 +337,12 @@ _HISTORY_MONTHS = 3
 # answered by signing in again before giving up.
 _TOKEN_HINTS = ("token", "auth")
 
+# Real-time fields not to take over. Besides the envelope, ``generationTotal``
+# is dropped: for a station whose history adds up to about 3 515 kWh it read
+# 19 673, matching neither kWh nor any other plausible unit. The lifetime total
+# is summed from the history instead, which agrees with the portal's figure.
+_REALTIME_IGNORED = frozenset({"code", "msg", "success", "requestId", "generationTotal"})
+
 # How far back the first history scan looks for a year with data.
 _MAX_HISTORY_YEARS = 15
 
@@ -481,7 +487,7 @@ class SolarmanOpenApi:
             OPENAPI_PATH_STATION_REALTIME, {"stationId": station_id}
         )
         for key, value in realtime.items():
-            if key not in ("code", "msg", "success", "requestId") and value is not None:
+            if key not in _REALTIME_IGNORED and value is not None:
                 data[key] = value
         # Same meaning, different name from the portal's.
         if data.get("buyPower") is None and data.get("purchasePower") is not None:
