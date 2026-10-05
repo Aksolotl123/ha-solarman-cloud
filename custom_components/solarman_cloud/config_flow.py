@@ -8,6 +8,7 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.components import webhook as webhook_component
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -22,6 +23,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
+from . import webhook as token_webhook
 from .api import SolarmanApiError, SolarmanAuthError, SolarmanCloudApi
 from .const import (
     AUTH_MODE_OPENAPI,
@@ -39,6 +41,7 @@ from .const import (
     CONF_SCAN_INTERVAL,
     CONF_STATION_ID,
     CONF_STATION_NAME,
+    CONF_WEBHOOK_ID,
     DEFAULT_BASE_URL,
     DEFAULT_OPENAPI_URL,
     DEFAULT_REGION,
@@ -51,6 +54,9 @@ from .coordinator import auth_mode, build_openapi
 _LOGGER = logging.getLogger(__name__)
 
 _SECRET = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+
+# Options-flow field that replaces the webhook id, invalidating the old URL.
+CONF_REGENERATE_WEBHOOK = "regenerate_webhook"
 
 
 async def _async_validate(
@@ -402,22 +408,65 @@ class SolarmanConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class SolarmanOptionsFlow(OptionsFlow):
-    """Allow changing the polling interval after setup."""
+    """Change the polling interval; in token mode also show the webhook URL.
+
+    The webhook URL is a secret, and the options flow is the one place in the
+    UI that only administrators can open, so that is where it is shown.
+    """
+
+    def _interval_field(self) -> dict[Any, Any]:
+        current = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        )
+        return {
+            vol.Required(CONF_SCAN_INTERVAL, default=current): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)
+            )
+        }
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        if auth_mode(self.config_entry.data) == AUTH_MODE_PORTAL:
+            return await self.async_step_portal(user_input)
+
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
-        current = self.config_entry.options.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        return self.async_show_form(
+            step_id="init", data_schema=vol.Schema(self._interval_field())
         )
+
+    async def async_step_portal(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Token mode: interval, the webhook URL, and a way to replace it."""
+        entry = self.config_entry
+        if user_input is not None:
+            if user_input.get(CONF_REGENERATE_WEBHOOK):
+                # A new id makes the old URL useless; the reload registers the
+                # new webhook and unregisters the old one.
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data={
+                        **entry.data,
+                        CONF_WEBHOOK_ID: webhook_component.async_generate_id(),
+                    },
+                )
+                self.hass.config_entries.async_schedule_reload(entry.entry_id)
+            return self.async_create_entry(
+                data={CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL]}
+            )
+
+        url = token_webhook.build_url(self.hass, entry) or "-"
         schema = vol.Schema(
             {
-                vol.Required(CONF_SCAN_INTERVAL, default=current): vol.All(
-                    vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)
-                )
+                **self._interval_field(),
+                vol.Optional(CONF_REGENERATE_WEBHOOK, default=False): bool,
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="portal",
+            data_schema=schema,
+            description_placeholders={"webhook_url": url},
+        )

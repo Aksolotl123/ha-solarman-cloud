@@ -101,6 +101,14 @@
         "data": {
           "scan_interval": "Polling interval (seconds)"
         }
+      },
+      "portal": {
+        "title": "Options",
+        "description": "**Token webhook URL** - paste it into the userscript as `WEBHOOK_URL`. Treat it like a password: anyone who has it can push a token to Home Assistant. Only administrators can open this dialog.\n\n`{webhook_url}`\n\nIf the URL may have leaked (versions up to 0.9.2 showed it in an entity and in the log), tick \"Generate a new webhook URL\": the old one stops working, and this dialog shows the new one the next time it is opened.",
+        "data": {
+          "scan_interval": "Polling interval (seconds)",
+          "regenerate_webhook": "Generate a new webhook URL (the old one stops working)"
+        }
       }
     }
   },
@@ -149,7 +157,16 @@
         "name": "Token expires"
       },
       "token_webhook": {
-        "name": "Token webhook URL"
+        "name": "Token webhook",
+        "state": {
+          "active": "Active",
+          "inactive": "Inactive"
+        },
+        "state_attributes": {
+          "last_token_received": {
+            "name": "Last token received"
+          }
+        }
       }
     }
   }

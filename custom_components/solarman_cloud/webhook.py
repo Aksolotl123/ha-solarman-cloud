@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from json import JSONDecodeError, loads
 
 from aiohttp.web import Request, Response
@@ -18,6 +19,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.network import NoURLAvailableError, get_url
+from homeassistant.util import dt as dt_util
 
 from .api import SolarmanApiError, SolarmanAuthError, SolarmanCloudApi, token_expiry
 from .const import (
@@ -41,6 +43,40 @@ MAX_TOKEN_LENGTH = 8000
 _LOCKS: dict[str, asyncio.Lock] = {}
 _LAST_ACCEPTED: dict[str, str] = {}
 
+# The webhook id actually registered for each entry. Unregistering goes by this
+# value, not by entry.data, so a regenerated id never leaves the old one live.
+_REGISTERED: dict[str, str] = {}
+# When a token posted by the browser was last accepted, per entry.
+_LAST_RECEIVED: dict[str, datetime] = {}
+
+
+def is_registered(entry: ConfigEntry) -> bool:
+    """Whether this entry's webhook is currently listening."""
+    return entry.entry_id in _REGISTERED
+
+
+def last_received(entry: ConfigEntry) -> datetime | None:
+    """When the browser last delivered a token that was accepted."""
+    return _LAST_RECEIVED.get(entry.entry_id)
+
+
+def build_url(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
+    """The full webhook URL for the userscript.
+
+    The webhook id is the only thing protecting the endpoint, so this URL must
+    never reach a log, an entity state or an attribute. It is shown only in the
+    options flow, which only administrators can open.
+    """
+    webhook_id = entry.data.get(CONF_WEBHOOK_ID)
+    if not webhook_id:
+        return None
+    try:
+        # Prefer an internet-reachable URL: the browser may be off-network.
+        base = get_url(hass, allow_cloud=True, prefer_external=True)
+    except NoURLAvailableError:
+        base = ""
+    return f"{base}{webhook.async_generate_path(webhook_id)}"
+
 
 async def async_register(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register this entry's token-receiving webhook."""
@@ -62,17 +98,11 @@ async def async_register(hass: HomeAssistant, entry: ConfigEntry) -> None:
         allowed_methods=["POST"],
         local_only=False,
     )
-    path = webhook.async_generate_path(webhook_id)
-    try:
-        # Prefer an internet-reachable URL: the browser may be off-network.
-        base = get_url(hass, allow_cloud=True, prefer_external=True)
-    except NoURLAvailableError:
-        base = ""
+    _REGISTERED[entry.entry_id] = webhook_id
+    # The URL itself is a secret and is deliberately not logged.
     _LOGGER.info(
-        "Solarman token webhook ready. Put this URL in the userscript "
-        "(keep it secret): %s%s",
-        base,
-        path,
+        "Solarman token webhook registered; its URL is shown in the "
+        "integration options (Configure)"
     )
 
 
@@ -129,6 +159,10 @@ async def _async_handle_token(
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, CONF_REFRESH_TOKEN: newest}
         )
+        _LAST_RECEIVED[entry.entry_id] = dt_util.utcnow()
+        if coordinator is not None:
+            # Let the token and webhook diagnostics show the new values now.
+            coordinator.async_update_listeners()
 
         exp = token_expiry(newest)
         _LOGGER.info(
@@ -140,5 +174,5 @@ async def _async_handle_token(
 
 def async_unregister(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove the webhook when the entry is unloaded."""
-    if webhook_id := entry.data.get(CONF_WEBHOOK_ID):
+    if webhook_id := _REGISTERED.pop(entry.entry_id, None):
         webhook.async_unregister(hass, webhook_id)

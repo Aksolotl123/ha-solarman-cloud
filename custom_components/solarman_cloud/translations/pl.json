@@ -101,6 +101,14 @@
         "data": {
           "scan_interval": "Częstotliwość odpytywania (sekundy)"
         }
+      },
+      "portal": {
+        "title": "Opcje",
+        "description": "**Adres webhooka tokenu** - wklej go do userscriptu jako `WEBHOOK_URL`. Traktuj go jak hasło: kto go zna, może wysłać token do Home Assistant. To okno mogą otworzyć tylko administratorzy.\n\n`{webhook_url}`\n\nJeśli adres mógł wyciec (wersje do 0.9.2 pokazywały go w encji i w logu), zaznacz „Wygeneruj nowy adres webhooka”: stary przestanie działać, a nowy pojawi się tu przy następnym otwarciu opcji.",
+        "data": {
+          "scan_interval": "Częstotliwość odpytywania (sekundy)",
+          "regenerate_webhook": "Wygeneruj nowy adres webhooka (stary przestanie działać)"
+        }
       }
     }
   },
@@ -149,7 +157,16 @@
         "name": "Token ważny do"
       },
       "token_webhook": {
-        "name": "Adres webhooka tokenu"
+        "name": "Webhook tokenu",
+        "state": {
+          "active": "Aktywny",
+          "inactive": "Nieaktywny"
+        },
+        "state_attributes": {
+          "last_token_received": {
+            "name": "Ostatni odebrany token"
+          }
+        }
       }
     }
   }

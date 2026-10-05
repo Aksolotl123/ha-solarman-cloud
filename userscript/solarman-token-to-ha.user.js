@@ -15,8 +15,8 @@
 
 /*
  * SETUP: replace WEBHOOK_URL below with your own webhook address.
- * You will find it in the Home Assistant log right after the integration starts,
- * on a line reading "Solarman token webhook ready".
+ * In Home Assistant open Settings -> Devices & services -> Solarman Cloud ->
+ * Configure (admin only); the options dialog shows the URL.
  * It looks like:  https://<your-ha-address>/api/webhook/<long-random-id>
  *
  * Treat that URL as a secret: anyone who has it can push a token to your HA.

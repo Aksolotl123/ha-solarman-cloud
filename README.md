@@ -25,7 +25,7 @@ podaje Solarman w mailu z kluczem). Konta chińskiej chmury używają
 `https://api.solarmanpv.com`. Oficjalne API nie zawsze podaje sumy dzienne,
 miesięczne i całkowite w danych bieżących — wtedy integracja liczy je z historii
 produkcji (dzień po dniu i miesiąc po miesiącu), więc encje są te same w obu trybach.
-Encje „Token ważny do” i „Adres webhooka tokenu” istnieją tylko w trybie tokenu.
+Encje „Token ważny do” i „Webhook tokenu” istnieją tylko w trybie tokenu.
 
 ## Tryb tokenu z portalu — jak działa uwierzytelnianie
 
@@ -63,13 +63,23 @@ wykrywa token i wysyła go do Home Assistant — integracja weryfikuje go, zapis
 i przeładowuje się. Ty logujesz się i rozwiązujesz suwak sam; automatyzowane jest
 wyłącznie przeniesienie tokenu.
 
-1. Po starcie integracji znajdź w logu HA linię `Solarman token webhook ready` —
-   zawiera Twój prywatny adres webhooka.
+1. Otwórz **Ustawienia → Urządzenia i usługi → Solarman Cloud → Konfiguruj**
+   (opcje integracji) — okno pokazuje Twój prywatny adres webhooka. Opcje może
+   otworzyć tylko administrator HA; adresu nie ma w logu ani w żadnej encji.
 2. Zainstaluj rozszerzenie Tampermonkey i dodaj skrypt
    [`userscript/solarman-token-to-ha.user.js`](userscript/solarman-token-to-ha.user.js).
 3. Wklej adres webhooka w miejsce `PASTE_YOUR_WEBHOOK_URL_HERE`.
 
 **Adres webhooka traktuj jak hasło** — kto go zna, może wysłać token do Twojego HA.
+
+Encja diagnostyczna „Webhook tokenu” pokazuje tylko stan (`Aktywny`/`Nieaktywny`)
+i czas ostatniego przyjętego tokenu (atrybut `last_token_received`), bez adresu.
+
+**Aktualizacja z wersji ≤ 0.9.2:** starsze wersje pokazywały adres w stanie encji
+i w logu, więc trafił on do historii, dziennika i kopii zapasowych. Po aktualizacji
+otwórz opcje integracji, zaznacz **„Wygeneruj nowy adres webhooka”**, zapisz,
+a potem wklej nowy adres (widoczny po ponownym otwarciu opcji) do userscriptu.
+Stare wpisy encji możesz usunąć z historii usługą `recorder.purge_entities`.
 
 ## Funkcje
 

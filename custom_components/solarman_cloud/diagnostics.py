@@ -17,6 +17,7 @@ from .const import (
     CONF_EMAIL,
     CONF_PASSWORD_HASH,
     CONF_REFRESH_TOKEN,
+    CONF_STATION_NAME,
     CONF_WEBHOOK_ID,
     DOMAIN,
 )
@@ -29,6 +30,10 @@ TO_REDACT = {
     CONF_PASSWORD_HASH,
     CONF_REFRESH_TOKEN,
     CONF_WEBHOOK_ID,
+    # What the owner called the station, and its photo.
+    CONF_STATION_NAME,
+    "name",
+    "stationImage",
     # Where the station is.
     "locationLat",
     "locationLng",
