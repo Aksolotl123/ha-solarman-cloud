@@ -23,6 +23,7 @@ import base64
 import binascii
 import calendar
 import logging
+import re
 import time
 from datetime import date, datetime, timezone
 from json import loads as json_loads
@@ -76,6 +77,40 @@ def token_expiry(token: str) -> datetime | None:
     if not exp:
         return None
     return datetime.fromtimestamp(int(exp), tz=timezone.utc)
+
+
+_JWT_LIKE = re.compile(r"eyJ[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]{4,}){1,2}")
+
+
+def scrub_tokens(text: str, *secrets: str | None) -> str:
+    """Replace anything shaped like a JWT, and the given values, with a marker.
+
+    For logs and exception messages. The explicit ``secrets`` catch a token
+    echoed back even if it is not JWT-shaped.
+    """
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "<token>")
+    return _JWT_LIKE.sub("<token>", text)
+
+
+def _error_summary(body: Any, raw: str, *secrets: str | None, limit: int = 200) -> str:
+    """The error part of a failed response, with any token echo removed.
+
+    OAuth servers commonly repeat the rejected refresh token in
+    ``error_description`` ("Invalid refresh token: ..."), so the raw body must
+    not reach the log or an exception message as it came.
+    """
+    if isinstance(body, dict):
+        parts = [
+            str(body[k])
+            for k in ("error", "code", "msg", "message", "error_description")
+            if body.get(k)
+        ]
+        text = " ".join(parts) or "no error description"
+    else:
+        text = raw
+    return scrub_tokens(text, *secrets)[:limit]
 
 
 class SolarmanAuthError(Exception):
@@ -154,13 +189,11 @@ class SolarmanCloudApi:
 
         token = body.get("access_token") if isinstance(body, dict) else None
         if not token:
-            # Responses carry no secrets, so they are safe to log.
-            _LOGGER.error(
-                "Solarman token refresh failed (HTTP %s): %s", status, raw[:400]
-            )
+            reason = _error_summary(body, raw, self._refresh_token)
+            _LOGGER.error("Solarman token refresh failed (HTTP %s): %s", status, reason)
             raise SolarmanAuthError(
                 f"Refresh token rejected (HTTP {status}). Sign in again in a browser "
-                f"and re-enter the token. Server said: {raw[:200]}"
+                f"and re-enter the token. Server said: {reason}"
             )
 
         self._access_token = token
@@ -456,7 +489,10 @@ class SolarmanOpenApi:
         except ValueError:
             body = None
         if status >= 400 or not isinstance(body, dict):
-            raise SolarmanApiError(f"{path} answered HTTP {status}: {raw[:300]}")
+            reason = scrub_tokens(
+                raw, self._access_token, self._app_secret, self._password_hash
+            )
+            raise SolarmanApiError(f"{path} answered HTTP {status}: {reason[:300]}")
         return body
 
     # -- high level ---------------------------------------------------------

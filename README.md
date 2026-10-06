@@ -71,6 +71,8 @@ wyłącznie przeniesienie tokenu.
 3. Wklej adres webhooka w miejsce `PASTE_YOUR_WEBHOOK_URL_HERE`.
 
 **Adres webhooka traktuj jak hasło** — kto go zna, może wysłać token do Twojego HA.
+Od wersji 0.10.1 webhook przyjmuje tylko token konta, które widzi skonfigurowaną
+stację (token innego konta: odpowiedź 403), a treść większą niż 16 kB odrzuca bez czytania.
 
 Encja diagnostyczna „Webhook tokenu” pokazuje tylko stan (`Aktywny`/`Nieaktywny`)
 i czas ostatniego przyjętego tokenu (atrybut `last_token_received`), bez adresu.

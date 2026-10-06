@@ -168,9 +168,16 @@ def test_diagnostics_redacts_station_identity() -> None:
         "name": "Dom Kowalskich",
         "stationImage": "https://img.example.invalid/x.jpg",
         CONF_WEBHOOK_ID: WEBHOOK_ID,
+        "station_id": 4242,
+        "id": 4242,
+        "stationId": 4242,
+        "regionTimezone": "Europe/Warsaw",
         "generationPower": 1234,
     }
     redacted = async_redact_data(data, TO_REDACT)
-    for key in ("station_name", "name", "stationImage", CONF_WEBHOOK_ID):
+    for key in (
+        "station_name", "name", "stationImage", CONF_WEBHOOK_ID,
+        "station_id", "id", "stationId", "regionTimezone",
+    ):
         assert redacted[key] == REDACTED
     assert redacted["generationPower"] == 1234

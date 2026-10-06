@@ -26,6 +26,7 @@ from .const import (
     CONF_BASE_URL,
     CONF_REFRESH_TOKEN,
     CONF_REGION,
+    CONF_STATION_ID,
     CONF_WEBHOOK_ID,
     DEFAULT_BASE_URL,
     DEFAULT_REGION,
@@ -37,6 +38,9 @@ _LOGGER = logging.getLogger(__name__)
 # Tokens are JWTs; anything much shorter is not worth sending to the server.
 MIN_TOKEN_LENGTH = 100
 MAX_TOKEN_LENGTH = 8000
+# Room for the token in a small JSON envelope. Anything larger is refused before
+# it is read whole (Home Assistant would otherwise accept up to 16 MiB).
+MAX_BODY_BYTES = 16 * 1024
 
 # The browser script can fire several times at once (page load plus its periodic
 # check). Each accepted post spends a token, so identical posts are handled once.
@@ -106,12 +110,36 @@ async def async_register(hass: HomeAssistant, entry: ConfigEntry) -> None:
     )
 
 
+async def _async_read_body(request: Request) -> bytes | None:
+    """The request body, or None when it is larger than ``MAX_BODY_BYTES``.
+
+    A declared Content-Length is checked first; a chunked body without one is
+    read only up to the limit.
+    """
+    # Requests relayed by Home Assistant Cloud carry no content_length.
+    length = getattr(request, "content_length", None)
+    if length is not None and length > MAX_BODY_BYTES:
+        return None
+    # Taken once: on a relayed request every access returns a fresh reader.
+    stream = request.content
+    data = b""
+    while len(data) <= MAX_BODY_BYTES:
+        chunk = await stream.read(MAX_BODY_BYTES + 1 - len(data))
+        if not chunk:
+            return data
+        data += chunk
+    return None
+
+
 async def _async_handle_token(
     hass: HomeAssistant, entry: ConfigEntry, request: Request
 ) -> Response:
     """Validate a posted token and store it on the config entry."""
     try:
-        token = (await request.text()).strip()
+        body = await _async_read_body(request)
+        if body is None:
+            return Response(status=413, text="too large")
+        token = body.decode("utf-8").strip()
     except Exception:  # noqa: BLE001 - malformed body
         return Response(status=400, text="bad request")
 
@@ -119,7 +147,7 @@ async def _async_handle_token(
     if token.startswith("{"):
         try:
             token = str(loads(token).get("refresh_token", "")).strip()
-        except (JSONDecodeError, AttributeError):
+        except (JSONDecodeError, AttributeError, RecursionError):
             return Response(status=400, text="bad json")
 
     if not MIN_TOKEN_LENGTH <= len(token) <= MAX_TOKEN_LENGTH:
@@ -140,11 +168,45 @@ async def _async_handle_token(
             entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
             entry.data.get(CONF_REGION, DEFAULT_REGION),
         )
+        # Any exception escaping this handler is logged by Home Assistant
+        # together with the webhook id, so none may escape.
         try:
             await api.async_refresh()
         except (SolarmanAuthError, SolarmanApiError) as err:
             _LOGGER.warning("Solarman webhook rejected a token: %s", err)
             return Response(status=400, text="token rejected")
+        except Exception as err:  # noqa: BLE001 - see above
+            _LOGGER.warning(
+                "Solarman webhook could not check a token: %s", type(err).__name__
+            )
+            return Response(status=503, text="try again later")
+
+        # A working token for some other Solarman account must not replace ours:
+        # whoever knows the webhook URL could otherwise swap the account behind
+        # the sensors, or cut the owner off until a reauth.
+        try:
+            stations = await api.async_get_stations()
+        except SolarmanAuthError as err:
+            _LOGGER.warning("Solarman webhook rejected a token: %s", err)
+            return Response(status=400, text="token rejected")
+        except Exception as err:  # noqa: BLE001 - see above
+            # The refresh above has already rotated the posted token, so it may
+            # now be spent; still, a token whose account could not be checked
+            # is not stored. The browser posts again and the next one is checked.
+            _LOGGER.warning(
+                "Solarman webhook could not verify the station for a token: %s",
+                err if isinstance(err, SolarmanApiError) else type(err).__name__,
+            )
+            return Response(status=503, text="try again later")
+        station_id = entry.data.get(CONF_STATION_ID)
+        if not any(
+            isinstance(station, dict) and station.get("id") == station_id
+            for station in stations
+        ):
+            _LOGGER.warning(
+                "Solarman webhook got a token that cannot see this station; ignored"
+            )
+            return Response(status=403, text="wrong account")
 
         # async_refresh may already have rotated it; store the newest one.
         newest = api.refresh_token

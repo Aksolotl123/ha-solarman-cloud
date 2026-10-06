@@ -17,6 +17,7 @@ from .const import (
     CONF_EMAIL,
     CONF_PASSWORD_HASH,
     CONF_REFRESH_TOKEN,
+    CONF_STATION_ID,
     CONF_STATION_NAME,
     CONF_WEBHOOK_ID,
     DOMAIN,
@@ -30,6 +31,12 @@ TO_REDACT = {
     CONF_PASSWORD_HASH,
     CONF_REFRESH_TOKEN,
     CONF_WEBHOOK_ID,
+    # The plant's id: its page in the portal and every API call are keyed by it.
+    CONF_STATION_ID,
+    "id",
+    "stationId",
+    # Where the station is, down to the time zone.
+    "regionTimezone",
     # What the owner called the station, and its photo.
     CONF_STATION_NAME,
     "name",
